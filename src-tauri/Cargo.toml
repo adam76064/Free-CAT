@@ -1,0 +1,74 @@
+[package]
+name = "free-cat"
+version = "0.1.0"
+description = "Free, open-source professional CAT tool"
+authors = ["Free-CAT Contributors"]
+edition = "2021"
+rust-version = "1.77"
+
+# Tauri build config
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# ── Tauri core ────────────────────────────────────────────────────────────────
+tauri           = { version = "2", features = ["devtools"] }
+tauri-plugin-fs     = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell  = "2"
+
+# ── Async runtime ─────────────────────────────────────────────────────────────
+tokio = { version = "1", features = ["full"] }
+
+# ── Database ──────────────────────────────────────────────────────────────────
+rusqlite = { version = "0.31", features = ["bundled", "backup", "hooks"] }
+# bundled = compiles SQLite with FTS5 enabled
+
+# ── Serialization ─────────────────────────────────────────────────────────────
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+toml        = "0.8"
+
+# ── Text / NLP ────────────────────────────────────────────────────────────────
+strsim               = "0.11"   # Levenshtein, Dice, Jaro-Winkler
+unicode-segmentation = "1.12"   # Grapheme cluster / word boundary segmentation
+whatlang             = "0.16"   # Language detection (60+ languages)
+
+# ── XML parsing (XLIFF, TMX, TBX, SRX) ───────────────────────────────────────
+quick-xml = { version = "0.36", features = ["serialize", "async-tokio"] }
+
+# ── ZIP (DOCX, XLSX, PPTX, IDML, .sdlppx are all ZIP archives) ───────────────
+zip = "2"
+
+# ── HTTP clients (MT / AI APIs) ───────────────────────────────────────────────
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# ── Error handling ────────────────────────────────────────────────────────────
+anyhow  = "1"
+thiserror = "1"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log          = "0.4"
+tauri-plugin-log = "2"
+
+# ── UUID generation ───────────────────────────────────────────────────────────
+uuid = { version = "1", features = ["v4"] }
+
+# ── Date / Time ───────────────────────────────────────────────────────────────
+chrono = { version = "0.4", features = ["serde"] }
+
+# ── Regex (QA rules engine) ───────────────────────────────────────────────────
+regex = "1"
+
+[profile.dev]
+# Faster dev builds with some optimisation
+opt-level = 1
+incremental = true
+
+[profile.release]
+# Optimised, small release binaries
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

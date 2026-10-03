@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.svelte-kit/
+target/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+src-tauri/target/
+src-tauri/WixTools/
+*.pem
+*.key

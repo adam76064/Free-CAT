@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Google Fonts — load Inter for UI, JetBrains Mono for editor */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --segment-height: 2.5rem;
+    --panel-width: 320px;
+    --sidebar-width: 48px;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-600 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-400 dark:bg-gray-500; }
+}
+
+@layer components {
+  /* Segment row status colours */
+  .seg-new        { @apply bg-segment-new dark:bg-segment-new-dark; }
+  .seg-draft      { @apply bg-segment-draft dark:bg-segment-draft-dark; }
+  .seg-translated { @apply bg-segment-translated dark:bg-segment-translated-dark; }
+  .seg-review     { @apply bg-segment-review dark:bg-segment-review-dark; }
+  .seg-reviewed   { @apply bg-segment-reviewed dark:bg-segment-reviewed-dark; }
+  .seg-final      { @apply bg-segment-final dark:bg-segment-final-dark; }
+
+  /* TM match badge colours */
+  .badge-exact  { @apply bg-match-exact text-white; }
+  .badge-high   { @apply bg-match-high text-white; }
+  .badge-medium { @apply bg-match-medium text-white; }
+  .badge-low    { @apply bg-match-low text-white; }
+
+  /* Editor pane typography */
+  .editor-text {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.6;
+  }
+
+  /* Tag placeholder styling */
+  .tag-placeholder {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono
+           bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300
+           border border-blue-200 dark:border-blue-700
+           cursor-default select-none mx-0.5;
+  }
+
+  /* Panel section headers */
+  .panel-header {
+    @apply text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-3 py-2;
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Free-CAT",
+  "version": "0.1.0",
+  "identifier": "com.freecat.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Free-CAT",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "fs": {
+      "scope": {
+        "allow": ["$APPDATA/freecat/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$HOME/**"],
+        "deny": ["$APPDATA/freecat/.ssh/**"]
+      }
+    },
+    "dialog": {},
+    "shell": {
+      "open": true
+    },
+    "log": {
+      "level": "debug",
+      "targets": [
+        { "kind": "stdout" },
+        { "kind": "logdir", "filename": "free-cat" }
+      ]
+    }
+  }
+}

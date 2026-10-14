@@ -2,7 +2,7 @@
   // TmPanel — shows TM matches for the selected segment and concordance search.
   import { tmMatches, tmLoading, concordanceResults, concordanceQuery } from '$lib/stores/tm';
   import { selectedSegment } from '$lib/stores/segments';
-  import TmMatchBadge from './TmMatchBadge.svelte';
+  import TmMatchBadge from '$lib/components/tm/TmMatchBadge.svelte';
   import { concordanceSearch } from '$lib/ipc/tm';
 
   interface Props {

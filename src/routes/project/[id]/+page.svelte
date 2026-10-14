@@ -9,33 +9,33 @@
   import { availableTms } from '$lib/stores/tm';
   import { listTms } from '$lib/ipc/tm';
 
-  const projectId = $derived($page.params.id);
+  $: projectId = $page.params.id as string;
 
-  let loading = $state(true);
-  let importing = $state(false);
-  let analysis = $state<any | null>(null);
-  let error = $state<string | null>(null);
+  let loading = true;
+  let importing = false;
+  let analysis: any = null;
+  let error = '';
 
   onMount(async () => {
+    const pid = projectId;
+    if (!pid) return;
     try {
-      const [proj, files] = await openProject(projectId);
+      const [proj, files] = await openProject(pid);
       currentProject.set(proj);
       currentFiles.set(files);
       projectSettings.set(parseSettings(proj.settings));
 
-      // Load TM list
       const tms = await listTms();
       availableTms.set(tms);
 
-      // Run analysis
       if (files.length > 0) {
         analysis = await analyzeProject({
           project_id: proj.id,
-          file_ids: files.map(f => f.id),
+          file_ids: files.map((f) => f.id),
         });
       }
     } catch (e: any) {
-      error = e.toString();
+      error = String(e);
     } finally {
       loading = false;
     }
@@ -62,12 +62,11 @@
         project_id: $currentProject.id,
         file_path: filePath,
       });
-      currentFiles.update(files => [result.file, ...files]);
+      currentFiles.update((files) => [result.file, ...files]);
 
-      // Refresh analysis
       analysis = await analyzeProject({
         project_id: $currentProject.id,
-        file_ids: $currentFiles.map(f => f.id),
+        file_ids: $currentFiles.map((f) => f.id),
       });
     } catch (e: any) {
       error = `Import failed: ${e}`;
@@ -86,8 +85,22 @@
 
   const FILE_ICONS: Record<string, string> = {
     txt: '📄', po: '🌐', pot: '🌐', docx: '📝',
-    xliff: '🔧', sdlxliff: '🔧', mqxliff: '🔧', default: '📄',
+    xliff: '🔧', sdlxliff: '🔧', mqxliff: '🔧',
   };
+
+  interface AnalysisCard {
+    label: string;
+    key: string;
+    color: string;
+    suffix?: string;
+  }
+
+  const analysisSummary: AnalysisCard[] = [
+    { label: 'Total Words',    key: 'total_words',      color: 'bg-gray-100 dark:bg-gray-800' },
+    { label: 'Exact Matches',  key: 'exact_words',      color: 'bg-green-50 dark:bg-green-900/20' },
+    { label: 'Fuzzy Matches',  key: 'fuzzy_words',      color: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'TM Savings',     key: 'tm_savings_pct',   color: 'bg-brand-50 dark:bg-brand-900/20', suffix: '%' },
+  ];
 </script>
 
 <div class="h-full overflow-y-auto bg-gray-50 dark:bg-gray-950">
@@ -100,10 +113,10 @@
   {:else if $currentProject}
     <div class="max-w-4xl mx-auto px-6 py-8">
 
-      <!-- Project header -->
+      <!-- Breadcrumb + header -->
       <div class="mb-8">
         <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-          <button onclick={() => goto('/')} class="hover:text-brand-500 transition-colors">Projects</button>
+          <button on:click={() => goto('/')} class="hover:text-brand-500 transition-colors">Projects</button>
           <span>/</span>
           <span class="text-gray-900 dark:text-white font-medium">{$currentProject.name}</span>
         </div>
@@ -120,7 +133,7 @@
             </div>
           </div>
           <button
-            onclick={handleImportFile}
+            on:click={handleImportFile}
             disabled={importing}
             class="px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50
                    text-white text-sm font-medium rounded-lg transition-colors"
@@ -130,17 +143,14 @@
         </div>
       </div>
 
-      <!-- Analysis summary cards -->
+      <!-- Analysis cards -->
       {#if analysis}
         <div class="grid grid-cols-4 gap-4 mb-8">
-          {#each [
-            { label: 'Total Words', value: analysis.total_words.toLocaleString(), color: 'bg-gray-100 dark:bg-gray-800' },
-            { label: 'Exact Matches', value: `${analysis.exact_words.toLocaleString()}`, color: 'bg-green-50 dark:bg-green-900/20' },
-            { label: 'Fuzzy Matches', value: `${analysis.fuzzy_words.toLocaleString()}`, color: 'bg-blue-50 dark:bg-blue-900/20' },
-            { label: 'TM Savings', value: `${analysis.tm_savings_pct}%`, color: 'bg-brand-50 dark:bg-brand-900/20' },
-          ] as card}
+          {#each analysisSummary as card}
             <div class="p-4 rounded-xl {card.color}">
-              <div class="text-2xl font-bold text-gray-900 dark:text-white">{card.value}</div>
+              <div class="text-2xl font-bold text-gray-900 dark:text-white">
+                {(analysis[card.key] ?? 0).toLocaleString()}{card.suffix ?? ''}
+              </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{card.label}</div>
             </div>
           {/each}
@@ -157,30 +167,30 @@
           <div class="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl
                       flex flex-col items-center justify-center py-12 gap-3">
             <span class="text-3xl">📂</span>
-            <p class="text-sm text-gray-500 dark:text-gray-400">No files yet. Import a source file to start translating.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              No files yet. Import a source file to start translating.
+            </p>
           </div>
         {:else}
           <div class="space-y-2">
             {#each $currentFiles as file (file.id)}
               <div class="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-xl
-                          border border-gray-200 dark:border-gray-800 hover:border-brand-300
-                          dark:hover:border-brand-700 transition-colors group">
-                <span class="text-2xl">{FILE_ICONS[file.format] ?? FILE_ICONS.default}</span>
+                          border border-gray-200 dark:border-gray-800
+                          hover:border-brand-300 dark:hover:border-brand-700 transition-colors">
+                <span class="text-2xl">{FILE_ICONS[file.format] ?? '📄'}</span>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white truncate">{file.filename}</div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     {file.seg_count} segments · {file.word_count.toLocaleString()} words · {file.format.toUpperCase()}
                   </div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    onclick={() => openEditor(file.id)}
-                    class="px-3 py-1.5 text-sm font-medium bg-brand-500 hover:bg-brand-600
-                           text-white rounded-lg transition-colors"
-                  >
-                    Translate →
-                  </button>
-                </div>
+                <button
+                  on:click={() => openEditor(file.id)}
+                  class="px-3 py-1.5 text-sm font-medium bg-brand-500 hover:bg-brand-600
+                         text-white rounded-lg transition-colors"
+                >
+                  Translate →
+                </button>
               </div>
             {/each}
           </div>

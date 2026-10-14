@@ -2,7 +2,7 @@
 
 use tauri::State;
 use crate::state::AppState;
-use crate::core::models::{AnalysisReport, SegmentStatus};
+use crate::core::models::AnalysisReport;
 
 /// Analyze a project: compute word counts and TM leverage statistics.
 #[tauri::command]

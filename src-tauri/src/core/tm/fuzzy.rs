@@ -9,7 +9,7 @@
 //   - "Fuzzy Match Repair" research — ACL Anthology 2024
 //   - Industry standard: SDL Trados uses Levenshtein; Déjà Vu uses Dice blend
 
-use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
+use strsim::normalized_damerau_levenshtein;
 
 /// Raw fuzzy scores before blending.
 #[derive(Debug, Clone)]

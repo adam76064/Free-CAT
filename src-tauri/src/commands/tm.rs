@@ -3,7 +3,6 @@
 use tauri::State;
 use uuid::Uuid;
 use chrono::Utc;
-use std::path::PathBuf;
 
 use crate::state::{AppState, TmEntry};
 use crate::core::models::{TmMatchResult, TranslationUnit, TmInfo};

@@ -1,11 +1,10 @@
 <script lang="ts">
   /**
    * SegmentGrid — the main bilingual editor grid.
-   * Virtualises long lists (renders only ±50 segments around selection).
-   * Handles TM lookup, auto-save, and segment confirmation.
+   * Handles TM lookup on selection change, auto-save, segment confirmation,
+   * keyboard navigation, filter/search, and the split right panel.
    */
-  import { onMount, tick } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { tick } from 'svelte';
   import {
     segments, selectedIndex, filteredSegments, selectedSegment,
     filterMode, segmentSearch, updateSegmentInStore,
@@ -24,19 +23,12 @@
 
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
+  let gridContainer: HTMLDivElement;
 
-  // Container ref for scroll management
-  let gridContainer: HTMLDivElement | undefined = $state();
-
-  // Trigger TM lookup whenever the selected segment changes
-  $effect(() => {
-    const seg = $selectedSegment;
-    if (seg && $currentProject && $projectSettings.tm_ids.length > 0) {
-      lookupTm(seg.source_text);
-    } else {
-      tmMatches.set([]);
-    }
-  });
+  // TM lookup whenever selected segment changes
+  $: if ($selectedSegment && $currentProject && $projectSettings.tm_ids.length > 0) {
+    lookupTm($selectedSegment.source_text);
+  }
 
   async function lookupTm(sourceText: string) {
     if (!$currentProject) return;
@@ -48,9 +40,6 @@
         tgt_lang: $currentProject.tgt_lang,
         tm_ids: $projectSettings.tm_ids,
         threshold: $projectSettings.fuzzy_threshold,
-        penalties: Object.fromEntries(
-          $projectSettings.tm_ids.map(id => [id, $projectSettings.mt_penalty])
-        ),
       });
       tmMatches.set(matches);
     } catch (e) {
@@ -61,7 +50,6 @@
     }
   }
 
-  // Apply a TM match to the current segment's target
   function applyTmMatch(targetText: string) {
     const seg = $selectedSegment;
     if (!seg) return;
@@ -69,10 +57,10 @@
     scheduleAutoSave(seg.id, targetText, 'draft');
   }
 
-  // Auto-save on target change (debounced)
   function handleTargetChange(segId: string, text: string) {
-    updateSegmentInStore(segId, { target_text: text, status: text.trim() ? 'draft' : 'new' });
-    scheduleAutoSave(segId, text, text.trim() ? 'draft' : 'new');
+    const status = text.trim() ? 'draft' : 'new';
+    updateSegmentInStore(segId, { target_text: text, status });
+    scheduleAutoSave(segId, text, status);
   }
 
   function scheduleAutoSave(segId: string, text: string, status: string) {
@@ -86,14 +74,11 @@
     }, $settings.autoSaveIntervalMs);
   }
 
-  // Confirm segment: set Translated, write to TM, advance to next
-  async function handleConfirm(seg: typeof $selectedSegment) {
+  async function handleConfirm(seg: { id: string; source_text: string; target_text: string }) {
     if (!seg || !$currentProject) return;
-    if (!seg.target_text.trim()) return; // cannot confirm empty
+    if (!seg.target_text.trim()) return;
 
     clearTimeout(autoSaveTimer);
-
-    // Optimistic update
     updateSegmentInStore(seg.id, { status: 'translated', target_text: seg.target_text });
 
     try {
@@ -106,7 +91,6 @@
         tgt_lang: $currentProject.tgt_lang,
       });
 
-      // Write-back to TM
       if ($projectSettings.writeback_mode === 'always' && $projectSettings.tm_ids.length > 0) {
         for (const tmId of $projectSettings.tm_ids) {
           await addToTm({
@@ -115,28 +99,24 @@
             target_text: seg.target_text,
             src_lang: $currentProject.src_lang,
             tgt_lang: $currentProject.tgt_lang,
-          }).catch(e => console.warn('TM write-back failed:', e));
+          }).catch(() => {/* silent */});
         }
       }
     } catch (e) {
       console.error('Confirm failed:', e);
     }
 
-    // Advance to next segment
     selectedIndex.update(i => Math.min(i + 1, $filteredSegments.length - 1));
     await tick();
     scrollToSelected();
   }
 
-  // Navigate by keyboard (arrow keys in non-editing context)
   function handleGridKeydown(e: KeyboardEvent) {
-    if (e.target !== gridContainer) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       selectedIndex.update(i => Math.min(i + 1, $filteredSegments.length - 1));
       scrollToSelected();
-    }
-    if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       selectedIndex.update(i => Math.max(i - 1, 0));
       scrollToSelected();
@@ -144,7 +124,6 @@
   }
 
   function scrollToSelected() {
-    // Rows are roughly 52px each; scroll selected into view
     if (!gridContainer) return;
     const rowHeight = 52;
     const top = $selectedIndex * rowHeight;
@@ -176,7 +155,6 @@
     }
   }
 
-  // Filter buttons
   const FILTERS: { label: string; value: FilterMode }[] = [
     { label: 'All', value: 'all' },
     { label: 'New', value: 'new' },
@@ -194,7 +172,7 @@
     <div class="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
       {#each FILTERS as f}
         <button
-          onclick={() => filterMode.set(f.value)}
+          on:click={() => filterMode.set(f.value)}
           class="px-2.5 py-1 text-xs rounded-md font-medium transition-colors
                  {$filterMode === f.value
                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
@@ -215,13 +193,10 @@
     />
 
     <div class="ml-auto flex items-center gap-2">
-      <!-- Progress -->
+      <!-- Progress bar -->
       <div class="flex items-center gap-1.5">
         <div class="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            class="h-full bg-green-500 rounded-full transition-all"
-            style="width: {$progressStats.pct}%"
-          ></div>
+          <div class="h-full bg-green-500 rounded-full transition-all" style="width: {$progressStats.pct}%"></div>
         </div>
         <span class="text-xs text-gray-500 dark:text-gray-400">
           {$progressStats.translated}/{$progressStats.total}
@@ -230,14 +205,15 @@
     </div>
   </div>
 
-  <!-- Main area: grid + right panel -->
+  <!-- Grid + right panel -->
   <div class="flex flex-1 overflow-hidden">
 
     <!-- Segment grid -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div
       bind:this={gridContainer}
       class="flex-1 overflow-y-auto"
-      onkeydown={handleGridKeydown}
+      on:keydown={handleGridKeydown}
       tabindex="-1"
       role="grid"
       aria-label="Translation editor"
@@ -263,7 +239,7 @@
         {#each $filteredSegments as segment, i (segment.id)}
           <SegmentRow
             {segment}
-            {index}={i}
+            index={i}
             isSelected={i === $selectedIndex}
             onSelect={() => selectedIndex.set(i)}
             onConfirm={handleConfirm}
@@ -273,18 +249,13 @@
       {/if}
     </div>
 
-    <!-- Right panel (TM + QA) -->
+    <!-- Right panel -->
     <div class="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950">
-      <!-- TM panel (60% height) -->
       <div class="flex-[3] overflow-hidden border-b border-gray-200 dark:border-gray-800">
         <TmPanel onApply={applyTmMatch} />
       </div>
-      <!-- QA panel (40% height) -->
       <div class="flex-[2] overflow-hidden">
-        <QaPanel
-          onJumpToSegment={jumpToSegment}
-          onRunQa={handleRunQa}
-        />
+        <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
       </div>
     </div>
 

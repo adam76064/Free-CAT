@@ -6,6 +6,14 @@ authors = ["Free-CAT Contributors"]
 edition = "2021"
 rust-version = "1.77"
 
+[lib]
+name = "free_cat"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "free-cat"
+path = "src/main.rs"
+
 # Tauri build config
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -32,10 +40,9 @@ toml        = "0.8"
 # ── Text / NLP ────────────────────────────────────────────────────────────────
 strsim               = "0.11"   # Levenshtein, Dice, Jaro-Winkler
 unicode-segmentation = "1.12"   # Grapheme cluster / word boundary segmentation
-whatlang             = "0.16"   # Language detection (60+ languages)
 
 # ── XML parsing (XLIFF, TMX, TBX, SRX) ───────────────────────────────────────
-quick-xml = { version = "0.36", features = ["serialize", "async-tokio"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
 
 # ── ZIP (DOCX, XLSX, PPTX, IDML, .sdlppx are all ZIP archives) ───────────────
 zip = "2"
@@ -60,15 +67,3 @@ chrono = { version = "0.4", features = ["serde"] }
 # ── Regex (QA rules engine) ───────────────────────────────────────────────────
 regex = "1"
 
-[profile.dev]
-# Faster dev builds with some optimisation
-opt-level = 1
-incremental = true
-
-[profile.release]
-# Optimised, small release binaries
-opt-level = "s"
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

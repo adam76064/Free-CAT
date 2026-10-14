@@ -13,21 +13,21 @@
     modified_at: string;
   }
 
-  let projects: Project[] = $state([]);
-  let loading = $state(true);
-  let showNewModal = $state(false);
+  let projects: Project[] = [];
+  let loading = true;
+  let showNewModal = false;
 
-  // New project form
-  let newName = $state('');
-  let newSrcLang = $state('en-US');
-  let newTgtLang = $state('');
-  let creating = $state(false);
+  let newName = '';
+  let newSrcLang = 'en-US';
+  let newTgtLang = '';
+  let creating = false;
+  let error = '';
 
   onMount(async () => {
     try {
       projects = await invoke<Project[]>('list_projects');
-    } catch (e) {
-      console.error('Failed to load projects:', e);
+    } catch (e: any) {
+      error = String(e);
     } finally {
       loading = false;
     }
@@ -36,6 +36,7 @@
   async function createProject() {
     if (!newName.trim() || !newTgtLang.trim()) return;
     creating = true;
+    error = '';
     try {
       const project = await invoke<Project>('create_project', {
         args: { name: newName, src_lang: newSrcLang, tgt_lang: newTgtLang }
@@ -45,14 +46,14 @@
       newName = '';
       newTgtLang = '';
       goto(`/project/${project.id}`);
-    } catch (e) {
-      console.error('Failed to create project:', e);
+    } catch (e: any) {
+      error = String(e);
     } finally {
       creating = false;
     }
   }
 
-  async function openProject(id: string) {
+  function openProject(id: string) {
     goto(`/project/${id}`);
   }
 
@@ -60,7 +61,7 @@
     return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
-  const COMMON_LANGS = [
+  const COMMON_LANGS: [string, string][] = [
     ['en-US', 'English (US)'], ['en-GB', 'English (UK)'],
     ['fr-FR', 'French'], ['de-DE', 'German'], ['es-ES', 'Spanish'],
     ['it-IT', 'Italian'], ['pt-BR', 'Portuguese (BR)'], ['nl-NL', 'Dutch'],
@@ -80,19 +81,23 @@
       </p>
     </div>
     <button
-      onclick={() => showNewModal = true}
+      on:click={() => (showNewModal = true)}
       class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition-colors"
     >
       + New Project
     </button>
   </div>
 
+  {#if error}
+    <div class="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+      {error}
+    </div>
+  {/if}
+
   <!-- Project list -->
   <div class="flex-1 overflow-y-auto p-6">
     {#if loading}
-      <div class="flex items-center justify-center h-48 text-gray-400">
-        Loading…
-      </div>
+      <div class="flex items-center justify-center h-48 text-gray-400">Loading…</div>
     {:else if projects.length === 0}
       <div class="flex flex-col items-center justify-center h-64 text-center">
         <div class="text-5xl mb-4">📄</div>
@@ -101,7 +106,7 @@
           Create your first translation project to get started.
         </p>
         <button
-          onclick={() => showNewModal = true}
+          on:click={() => (showNewModal = true)}
           class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition-colors"
         >
           Create Project
@@ -111,7 +116,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {#each projects as project (project.id)}
           <button
-            onclick={() => openProject(project.id)}
+            on:click={() => openProject(project.id)}
             class="text-left p-4 rounded-xl border border-gray-200 dark:border-gray-800
                    bg-white dark:bg-gray-900
                    hover:border-brand-300 dark:hover:border-brand-700
@@ -152,10 +157,11 @@
 
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label for="proj-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Project Name
           </label>
           <input
+            id="proj-name"
             bind:value={newName}
             placeholder="e.g. Annual Report 2025"
             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700
@@ -166,10 +172,11 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label for="src-lang" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Source Language
             </label>
             <select
+              id="src-lang"
               bind:value={newSrcLang}
               class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700
                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
@@ -182,10 +189,11 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label for="tgt-lang" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Target Language
             </label>
             <select
+              id="tgt-lang"
               bind:value={newTgtLang}
               class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700
                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
@@ -202,7 +210,7 @@
 
       <div class="flex gap-3 mt-6">
         <button
-          onclick={() => showNewModal = false}
+          on:click={() => (showNewModal = false)}
           class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300
                  border border-gray-300 dark:border-gray-600 rounded-lg
                  hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -210,7 +218,7 @@
           Cancel
         </button>
         <button
-          onclick={createProject}
+          on:click={createProject}
           disabled={!newName.trim() || !newTgtLang || creating}
           class="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand-500
                  hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed

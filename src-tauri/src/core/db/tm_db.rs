@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 use crate::core::models::{TranslationUnit, TmMatchResult};
-use crate::core::tm::fuzzy::{score_match, FuzzyScore};
+use crate::core::tm::fuzzy::score_match;
 
 pub struct TmDb {
     pub id:   String,
@@ -130,22 +130,20 @@ impl TmDb {
     ) -> Result<Vec<TmMatchResult>> {
         // Phase 1: FTS5 BM25 retrieval — get top 50 candidates fast
         let fts_query = build_fts_query(source_text);
-        let candidates: Vec<(i64, String, String)> = {
-            let mut stmt = self.conn.prepare(
-                "SELECT tu.id, tu.source_text, tu.target_text
-                 FROM tm_fts
-                 JOIN translation_units tu ON tu.id = tm_fts.rowid
-                 WHERE tm_fts MATCH ?1
-                   AND tu.source_lang = ?2
-                   AND tu.target_lang = ?3
-                 ORDER BY rank
-                 LIMIT 50"
-            )?;
-            stmt.query_map(params![fts_query, src_lang, tgt_lang], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-        };
+        let mut stmt = self.conn.prepare(
+            "SELECT tu.id, tu.source_text, tu.target_text
+             FROM tm_fts
+             JOIN translation_units tu ON tu.id = tm_fts.rowid
+             WHERE tm_fts MATCH ?1
+               AND tu.source_lang = ?2
+               AND tu.target_lang = ?3
+             ORDER BY rank
+             LIMIT 50"
+        )?;
+        let rows = stmt.query_map(params![fts_query, src_lang, tgt_lang], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+        let candidates: Vec<(i64, String, String)> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         // Phase 2: Precise scoring with Levenshtein + Dice blend
         let mut results: Vec<TmMatchResult> = candidates

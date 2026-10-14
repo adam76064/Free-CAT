@@ -1,7 +1,6 @@
 // commands/segment.rs — IPC handlers for segment operations
 
 use tauri::State;
-use uuid::Uuid;
 use chrono::Utc;
 
 use crate::state::AppState;
@@ -11,7 +10,7 @@ use crate::core::models::{Segment, SegmentStatus, SegmentHistory};
 #[tauri::command]
 pub async fn get_segments(
     file_id: String,
-    project_id: String,
+    _project_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<Segment>, String> {
     state.project_db
@@ -23,12 +22,11 @@ pub async fn get_segments(
 /// Get a single segment by ID.
 #[tauri::command]
 pub async fn get_segment(
-    segment_id: String,
-    state: State<'_, AppState>,
+    _segment_id: String,
+    _state: State<'_, AppState>,
 ) -> Result<Option<Segment>, String> {
-    // For now, get all and find — Phase 2 adds get_segment_by_id to ProjectDb
-    // This is acceptable for Phase 0 since segments are already loaded in frontend
-    Ok(None) // TODO: add get_by_id
+    // Phase 2 will add get_segment_by_id to ProjectDb
+    Ok(None)
 }
 
 #[derive(serde::Deserialize)]

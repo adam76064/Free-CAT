@@ -4,7 +4,7 @@ use tauri::State;
 use chrono::Utc;
 
 use crate::state::AppState;
-use crate::core::models::{QaResult, Segment};
+use crate::core::models::QaResult;
 use crate::core::qa::checks::{run_all_checks};
 use crate::core::db::tb_db::TbDb;
 

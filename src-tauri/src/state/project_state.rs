@@ -2,7 +2,6 @@
 // Per-project runtime state: the currently open project's DB handle and metadata.
 
 use std::path::PathBuf;
-use anyhow::Result;
 use crate::core::db::project_db::ProjectDb;
 
 /// Holds the currently open project.

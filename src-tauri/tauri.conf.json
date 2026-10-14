@@ -39,18 +39,5 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "fs": {},
-    "dialog": {},
-    "shell": {
-      "open": true
-    },
-    "log": {
-      "level": "debug",
-      "targets": [
-        { "kind": "stdout" },
-        { "kind": "logdir", "filename": "free-cat" }
-      ]
-    }
-  }
+  "plugins": {}
 }

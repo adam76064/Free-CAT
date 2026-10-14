@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Free-CAT",
         "width": 1440,
         "height": 900,
@@ -39,12 +40,7 @@
     ]
   },
   "plugins": {
-    "fs": {
-      "scope": {
-        "allow": ["$APPDATA/freecat/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$HOME/**"],
-        "deny": ["$APPDATA/freecat/.ssh/**"]
-      }
-    },
+    "fs": {},
     "dialog": {},
     "shell": {
       "open": true

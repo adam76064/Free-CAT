@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
    * SegmentGrid — the main bilingual editor grid.
-   * Handles TM lookup on selection change, auto-save, segment confirmation,
-   * keyboard navigation, filter/search, and the split right panel.
+   * Handles TM lookup & Termbase lookup on selection change, auto-save,
+   * segment confirmation with auto-propagation, keyboard navigation,
+   * filter/search, pre-translation, and the tabbed right panel.
    */
   import { tick } from 'svelte';
   import {
@@ -11,23 +12,33 @@
     progressStats, type FilterMode
   } from '$lib/stores/segments';
   import { tmMatches, tmLoading } from '$lib/stores/tm';
+  import { termMatches, tbLoading } from '$lib/stores/termbase';
   import { currentProject, currentFile, projectSettings } from '$lib/stores/project';
-  import { qaResults } from '$lib/stores/qa';
+  import { qaResults, qaErrors } from '$lib/stores/qa';
   import SegmentRow from './SegmentRow.svelte';
   import TmPanel from '$lib/components/panels/TmPanel.svelte';
+  import TbPanel from '$lib/components/panels/TbPanel.svelte';
   import QaPanel from '$lib/components/panels/QaPanel.svelte';
   import { queryTm, addToTm } from '$lib/ipc/tm';
-  import { updateSegment, confirmSegment } from '$lib/ipc/segment';
+  import { queryTb } from '$lib/ipc/termbase';
+  import { updateSegment, confirmSegment, getSegments } from '$lib/ipc/segment';
   import { settings } from '$lib/stores/settings';
-  import { runQa } from '$lib/ipc/project';
+  import { runQa, preTranslate } from '$lib/ipc/project';
 
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
   let gridContainer: HTMLDivElement;
+  let activeTab: 'tm' | 'tb' | 'qa' = 'tm';
+  let pretranslating = false;
 
-  // TM lookup whenever selected segment changes
-  $: if ($selectedSegment && $currentProject && $projectSettings.tm_ids.length > 0) {
-    lookupTm($selectedSegment.source_text);
+  // TM and TB lookup whenever selected segment changes
+  $: if ($selectedSegment && $currentProject) {
+    if ($projectSettings.tm_ids.length > 0) {
+      lookupTm($selectedSegment.source_text);
+    }
+    if ($projectSettings.tb_ids.length > 0) {
+      lookupTb($selectedSegment.source_text);
+    }
   }
 
   async function lookupTm(sourceText: string) {
@@ -50,11 +61,37 @@
     }
   }
 
+  async function lookupTb(sourceText: string) {
+    if (!$currentProject) return;
+    tbLoading.set(true);
+    try {
+      const matches = await queryTb({
+        text: sourceText,
+        lang: $currentProject.src_lang,
+        tb_ids: $projectSettings.tb_ids,
+      });
+      termMatches.set(matches);
+    } catch (e) {
+      console.error('TB lookup failed:', e);
+      termMatches.set([]);
+    } finally {
+      tbLoading.set(false);
+    }
+  }
+
   function applyTmMatch(targetText: string) {
     const seg = $selectedSegment;
     if (!seg) return;
     updateSegmentInStore(seg.id, { target_text: targetText, status: 'draft' });
     scheduleAutoSave(seg.id, targetText, 'draft');
+  }
+
+  function handleInsertTerm(termText: string) {
+    const seg = $selectedSegment;
+    if (!seg) return;
+    const newText = seg.target_text ? `${seg.target_text} ${termText}` : termText;
+    updateSegmentInStore(seg.id, { target_text: newText, status: 'draft' });
+    scheduleAutoSave(seg.id, newText, 'draft');
   }
 
   function handleTargetChange(segId: string, text: string) {
@@ -82,7 +119,7 @@
     updateSegmentInStore(seg.id, { status: 'translated', target_text: seg.target_text });
 
     try {
-      await confirmSegment({
+      const propagated = await confirmSegment({
         segment_id: seg.id,
         target_text: seg.target_text,
         project_id: $currentProject.id,
@@ -101,6 +138,12 @@
             tgt_lang: $currentProject.tgt_lang,
           }).catch(() => {/* silent */});
         }
+      }
+
+      // If auto-propagated to repeated segments, refresh file segments
+      if (propagated > 0 && $currentFile) {
+        const refreshed = await getSegments($currentFile.id, $currentProject.id);
+        segments.set(refreshed);
       }
     } catch (e) {
       console.error('Confirm failed:', e);
@@ -155,6 +198,25 @@
     }
   }
 
+  async function handlePretranslate() {
+    if (!$currentProject || !$currentFile) return;
+    pretranslating = true;
+    try {
+      const res = await preTranslate({
+        project_id: $currentProject.id,
+        file_ids: [$currentFile.id],
+        min_score: 1.0,
+      });
+      const reloaded = await getSegments($currentFile.id, $currentProject.id);
+      segments.set(reloaded);
+      alert(`Pre-translation complete: ${res.pretranslated} segments filled!`);
+    } catch (e) {
+      console.error('Pre-translate failed:', e);
+    } finally {
+      pretranslating = false;
+    }
+  }
+
   const FILTERS: { label: string; value: FilterMode }[] = [
     { label: 'All', value: 'all' },
     { label: 'New', value: 'new' },
@@ -191,6 +253,17 @@
              bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-48
              focus:outline-none focus:ring-1 focus:ring-brand-500"
     />
+
+    <!-- Pre-translate button -->
+    <button
+      on:click={handlePretranslate}
+      disabled={pretranslating}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+      title="Fill 100% exact matches from TM automatically"
+    >
+      {pretranslating ? '⚡ Pretranslating…' : '⚡ Pre-translate'}
+    </button>
 
     <div class="ml-auto flex items-center gap-2">
       <!-- Progress bar -->
@@ -249,13 +322,58 @@
       {/if}
     </div>
 
-    <!-- Right panel -->
+    <!-- Right panel with tabs -->
     <div class="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950">
-      <div class="flex-[3] overflow-hidden border-b border-gray-200 dark:border-gray-800">
-        <TmPanel onApply={applyTmMatch} />
+      <!-- Tab headers -->
+      <div class="flex items-center border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-1 py-1 gap-1 shrink-0">
+        <button
+          on:click={() => (activeTab = 'tm')}
+          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors
+                 {activeTab === 'tm'
+                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
+                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+        >
+          🧠 TM
+        </button>
+        <button
+          on:click={() => (activeTab = 'tb')}
+          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                 {activeTab === 'tb'
+                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
+                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+        >
+          <span>📖 Glossary</span>
+          {#if $termMatches.length > 0}
+            <span class="w-4 h-4 rounded-full bg-brand-500 text-white text-[10px] flex items-center justify-center">
+              {$termMatches.length}
+            </span>
+          {/if}
+        </button>
+        <button
+          on:click={() => (activeTab = 'qa')}
+          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                 {activeTab === 'qa'
+                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
+                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+        >
+          <span>✓ QA</span>
+          {#if $qaErrors.length > 0}
+            <span class="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+              {$qaErrors.length}
+            </span>
+          {/if}
+        </button>
       </div>
-      <div class="flex-[2] overflow-hidden">
-        <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
+
+      <!-- Tab content -->
+      <div class="flex-1 overflow-hidden">
+        {#if activeTab === 'tm'}
+          <TmPanel onApply={applyTmMatch} />
+        {:else if activeTab === 'tb'}
+          <TbPanel onInsertTerm={handleInsertTerm} />
+        {:else if activeTab === 'qa'}
+          <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
+        {/if}
       </div>
     </div>
 

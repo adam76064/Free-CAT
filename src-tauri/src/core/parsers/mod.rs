@@ -8,6 +8,8 @@ use crate::core::models::{ProjectFile, Segment};
 pub mod tmx;
 pub mod txt;
 pub mod po;
+pub mod xliff;
+pub mod tbx;
 
 /// Raw segment data returned by any parser.
 #[derive(Debug, Clone)]
@@ -25,6 +27,7 @@ pub fn detect_format(path: &Path) -> Option<String> {
         "sdlxliff"        => Some("sdlxliff".into()),
         "mqxliff"         => Some("mqxliff".into()),
         "tmx"             => Some("tmx".into()),
+        "tbx"             => Some("tbx".into()),
         "docx"            => Some("docx".into()),
         "xlsx"            => Some("xlsx".into()),
         "pptx"            => Some("pptx".into()),
@@ -43,18 +46,14 @@ pub fn detect_format(path: &Path) -> Option<String> {
 /// Dispatch file parsing to the correct parser based on format string.
 pub fn parse_file(path: &Path, format: &str) -> Result<Vec<RawSegment>> {
     match format {
-        "txt"             => txt::parse(path),
-        "po"              => po::parse(path),
-        "xliff" | "sdlxliff" | "mqxliff" => {
-            // TODO: XLIFF parser (Phase 1 completion)
-            log::warn!("XLIFF parser stub — returning empty segments");
-            Ok(vec![])
-        }
+        "txt"                            => txt::parse(path),
+        "po" | "pot"                     => po::parse(path),
+        "xliff" | "sdlxliff" | "mqxliff" => xliff::parse(path),
         "docx"            => {
-            // TODO: DOCX parser (Phase 1 completion)
+            // Placeholder for DOCX until zip/xml parser is hooked
             log::warn!("DOCX parser stub — returning placeholder");
             Ok(vec![RawSegment {
-                source_text: "DOCX parser not yet implemented".into(),
+                source_text: "DOCX parser will extract paragraphs in Phase 2".into(),
                 target_text: None, notes: None, context: None,
             }])
         }
@@ -65,8 +64,9 @@ pub fn parse_file(path: &Path, format: &str) -> Result<Vec<RawSegment>> {
 /// Export translated segments back to a file.
 pub fn export_file(file: &ProjectFile, segments: &[Segment], out_path: &str) -> Result<()> {
     match file.format.as_str() {
-        "txt" => txt::export(segments, out_path),
-        "po"  => po::export(segments, out_path),
+        "txt"                            => txt::export(segments, out_path),
+        "po" | "pot"                     => po::export(segments, out_path),
+        "xliff" | "sdlxliff" | "mqxliff" => xliff::export(segments, &file.source_path, out_path, "source", "target"),
         _ => {
             log::warn!("Export not yet implemented for format: {}", file.format);
             Err(anyhow!("Export for '{}' not yet implemented", file.format))

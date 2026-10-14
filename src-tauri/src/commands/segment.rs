@@ -63,12 +63,12 @@ pub struct ConfirmSegmentArgs {
     pub tgt_lang:     String,
 }
 
-/// Confirm a segment: set status → Translated, write to history, write-back to TM.
+/// Confirm a segment: set status → Translated, write to history, auto-propagate to repetitions.
 #[tauri::command]
 pub async fn confirm_segment(
     args: ConfirmSegmentArgs,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let db = state.project_db.lock().unwrap();
 
@@ -87,13 +87,30 @@ pub async fn confirm_segment(
         target_text: args.target_text.clone(),
         action:      "confirm".into(),
         actor:       None,
-        timestamp:   now,
+        timestamp:   now.clone(),
     };
     db.insert_history(&history).map_err(|e| e.to_string())?;
 
-    // TM write-back is handled by the tm command (tm::add_to_tm)
-    // so the frontend calls both confirm_segment + add_to_tm on confirmation.
+    // Auto-propagate to repeated segments if enabled in project settings
+    let mut propagated = 0;
+    if let Ok(Some(proj)) = db.get_project(&args.project_id) {
+        let settings: crate::core::models::ProjectSettings = serde_json::from_str(&proj.settings)
+            .unwrap_or_default();
+        if settings.auto_propagate {
+            if let Ok(count) = db.propagate_translation(
+                &args.project_id,
+                &args.source_text,
+                &args.target_text,
+                &now,
+            ) {
+                propagated = count;
+                if propagated > 0 {
+                    log::info!("Auto-propagated translation to {} repetitions", propagated);
+                }
+            }
+        }
+    }
 
     log::debug!("Confirmed segment: {}", args.segment_id);
-    Ok(())
+    Ok(propagated)
 }

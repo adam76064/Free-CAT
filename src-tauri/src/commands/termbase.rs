@@ -83,9 +83,25 @@ pub async fn import_tbx(
     tbx_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    // TODO: implement TBX parser (Phase 1 parser module)
-    log::warn!("TBX import not yet implemented");
-    Ok(0)
+    let entry = state.tb_index.lock().unwrap()
+        .iter().find(|e| e.id == tb_id).cloned()
+        .ok_or_else(|| format!("TB {} not found", tb_id))?;
+
+    let tb = TbDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    let terms = crate::core::parsers::tbx::parse_tbx(std::path::Path::new(&tbx_path))
+        .map_err(|e| e.to_string())?;
+
+    let mut count = 0u64;
+    for t in &terms {
+        if tb.insert_term(t).is_ok() {
+            count += 1;
+        }
+    }
+
+    log::info!("Imported {} terms into TB {}", count, tb_id);
+    Ok(count)
 }
 
 /// Export a termbase to TBX format.
@@ -95,9 +111,19 @@ pub async fn export_tbx(
     out_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    // TODO: implement TBX writer (Phase 1 parser module)
-    log::warn!("TBX export not yet implemented");
-    Ok(0)
+    let entry = state.tb_index.lock().unwrap()
+        .iter().find(|e| e.id == tb_id).cloned()
+        .ok_or_else(|| format!("TB {} not found", tb_id))?;
+
+    let tb = TbDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    let terms = tb.get_all().map_err(|e| e.to_string())?;
+    crate::core::parsers::tbx::export_tbx(&terms, &out_path)
+        .map_err(|e| e.to_string())?;
+
+    log::info!("Exported {} terms from TB {} to {}", terms.len(), tb_id, out_path);
+    Ok(terms.len() as u64)
 }
 
 /// List all available termbases.

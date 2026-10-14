@@ -73,3 +73,13 @@ export async function getMtSuggestion(args: {
 }): Promise<{ translated_text: string; engine: string; score_pct: number | null }> {
   return invoke('get_mt_suggestion', { args });
 }
+
+export async function preTranslate(args: {
+  project_id: string;
+  file_ids: string[];
+  min_score?: number;
+  overwrite?: boolean;
+}): Promise<{ total_segments: number; pretranslated: number; words_filled: number }> {
+  return invoke('pre_translate', { args });
+}
+

@@ -22,6 +22,6 @@ export async function confirmSegment(args: {
   source_text: string;
   src_lang: string;
   tgt_lang: string;
-}): Promise<void> {
+}): Promise<number> {
   return invoke('confirm_segment', { args });
 }

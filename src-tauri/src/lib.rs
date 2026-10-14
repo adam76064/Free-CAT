@@ -81,6 +81,7 @@ pub fn run() {
             // Analysis commands
             commands::analysis::analyze_project,
             commands::analysis::get_analysis_report,
+            commands::analysis::pre_translate,
             // MT commands
             commands::mt::get_mt_suggestion,
             // File import/export commands

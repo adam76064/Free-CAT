@@ -267,6 +267,73 @@ impl ProjectDb {
         Ok(())
     }
 
+    pub fn update_segment_full(
+        &self,
+        id: &str,
+        target: &str,
+        status: &SegmentStatus,
+        match_percent: Option<i64>,
+        match_origin: Option<&str>,
+        modified_at: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE segments
+             SET target_text = ?1, status = ?2, match_percent = ?3, match_origin = ?4, modified_at = ?5
+             WHERE id = ?6",
+            params![target, status.as_str(), match_percent, match_origin, modified_at, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn propagate_translation(
+        &self,
+        project_id: &str,
+        source_text: &str,
+        target_text: &str,
+        modified_at: &str,
+    ) -> Result<usize> {
+        let count = self.conn.execute(
+            "UPDATE segments
+             SET target_text = ?1, status = 'draft', modified_at = ?2, match_origin = 'auto_propagate'
+             WHERE source_text = ?3
+               AND status IN ('new', 'draft')
+               AND file_id IN (SELECT id FROM project_files WHERE project_id = ?4)",
+            params![target_text, modified_at, source_text, project_id],
+        )?;
+        Ok(count)
+    }
+
+    pub fn get_segments_for_project(&self, project_id: &str) -> Result<Vec<Segment>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_id, seq_number, source_text, target_text, status,
+                    match_percent, match_origin, locked, bookmarked, comment,
+                    created_at, modified_at, modified_by
+             FROM segments
+             WHERE file_id IN (SELECT id FROM project_files WHERE project_id = ?1)
+             ORDER BY seq_number ASC"
+        )?;
+        let rows = stmt.query_map(params![project_id], |row| {
+            let status_str: String = row.get(5)?;
+            Ok(Segment {
+                id:            row.get(0)?,
+                file_id:       row.get(1)?,
+                seq_number:    row.get(2)?,
+                source_text:   row.get(3)?,
+                target_text:   row.get(4)?,
+                status:        SegmentStatus::from_str(&status_str),
+                match_percent: row.get(6)?,
+                match_origin:  row.get(7)?,
+                locked:        row.get::<_, i32>(8)? != 0,
+                bookmarked:    row.get::<_, i32>(9)? != 0,
+                comment:       row.get(10)?,
+                created_at:    row.get(11)?,
+                modified_at:   row.get(12)?,
+                modified_by:   row.get(13)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn insert_history(&self, h: &SegmentHistory) -> Result<()> {
         self.conn.execute(
             "INSERT INTO segment_history (segment_id, target_text, action, actor, timestamp)

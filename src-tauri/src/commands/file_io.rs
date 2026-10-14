@@ -126,9 +126,9 @@ pub async fn export_file(
 /// Import a Trados .sdlppx package.
 #[tauri::command]
 pub async fn import_sdlppx(
-    project_id: String,
-    package_path: String,
-    state: State<'_, AppState>,
+    _project_id: String,
+    _package_path: String,
+    _state: State<'_, AppState>,
 ) -> Result<Vec<ImportResult>, String> {
     // TODO: Phase 2 - extract .sdlxliff files from ZIP, import each
     log::warn!("SDLPPX import not yet implemented (Phase 2 feature)");

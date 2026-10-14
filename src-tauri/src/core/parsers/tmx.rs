@@ -2,13 +2,9 @@
 // TMX 1.4b parser and writer.
 // Standard: https://ttt.org/oscarstandards/tmx/tmx14b.html
 
-use std::path::Path;
 use anyhow::{Result, Context};
-use quick_xml::events::{Event, BytesStart};
+use quick_xml::events::Event;
 use quick_xml::Reader;
-use quick_xml::Writer;
-use quick_xml::events::{BytesEnd, BytesText};
-use std::io::Cursor;
 use chrono::Utc;
 
 use crate::core::models::TranslationUnit;
@@ -65,6 +61,9 @@ pub fn parse_tmx_str(content: &str) -> Result<Vec<TranslationUnit>> {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("").to_string();
                         if key == "xml:lang" || key.ends_with(":lang") {
                             current_lang = attr.unescape_value().unwrap_or_default().to_string();
+                            if !src_lang.is_empty() && !current_lang.eq_ignore_ascii_case(&src_lang) && tgt_lang.is_empty() {
+                                tgt_lang = current_lang.clone();
+                            }
                         }
                     }
                 }

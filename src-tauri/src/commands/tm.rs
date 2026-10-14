@@ -203,7 +203,7 @@ pub async fn create_tm(
     let path = state.data_dir.join("tm").join(format!("{}.db", id));
 
     // Create the DB (initializes schema)
-    let tm = TmDb::open(id.clone(), args.name.clone(), path.clone())
+    let _tm = TmDb::open(id.clone(), args.name.clone(), path.clone())
         .map_err(|e| e.to_string())?;
 
     let entry = TmEntry {

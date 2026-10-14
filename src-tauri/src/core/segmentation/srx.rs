@@ -83,7 +83,7 @@ fn is_potential_break(c: char) -> bool {
 }
 
 /// Get segmentation rules for a given language code.
-fn get_rules(lang: &str) -> Vec<SegmentRule> {
+fn get_rules(_lang: &str) -> Vec<SegmentRule> {
     let mut rules = Vec::new();
 
     // ── NO-BREAK rules (evaluated first) ──────────────────────────────────────

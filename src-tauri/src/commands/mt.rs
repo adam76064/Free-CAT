@@ -24,7 +24,7 @@ pub struct MtResult {
 #[tauri::command]
 pub async fn get_mt_suggestion(
     args: MtArgs,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<MtResult, String> {
     match args.engine.as_str() {
         "deepl" => translate_deepl(args).await,

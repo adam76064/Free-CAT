@@ -182,6 +182,14 @@ impl ProjectDb {
         Ok(())
     }
 
+    pub fn update_project_settings(&self, id: &str, settings: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE projects SET settings = ?1 WHERE id = ?2",
+            params![settings, id],
+        )?;
+        Ok(())
+    }
+
     // ── Project File CRUD ─────────────────────────────────────────────────────
 
     pub fn insert_file(&self, f: &ProjectFile) -> Result<()> {

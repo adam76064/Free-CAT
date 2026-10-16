@@ -42,6 +42,8 @@
   let isTermExtractionOpen = false;
   let isQuoteInvoiceOpen = false;
   let pretranslating = false;
+  let isToolsMenuOpen = false;
+  let activeAutoPatch: string | null = null;
 
   $: documentText = $segments.map(s => s.source_text).join('. ');
 
@@ -114,32 +116,79 @@
 
   // TM and TB lookup whenever selected segment changes
   $: if ($selectedSegment && $currentProject) {
-    if ($projectSettings.tm_ids.length > 0) {
-      lookupTm($selectedSegment.source_text);
-    }
-    if ($projectSettings.tb_ids.length > 0) {
+    lookupTm($selectedSegment.source_text);
+    if ($projectSettings.tb_ids && $projectSettings.tb_ids.length > 0) {
       lookupTb($selectedSegment.source_text);
     }
   }
 
   async function lookupTm(sourceText: string) {
     if (!$currentProject) return;
+    activeAutoPatch = null;
     tmLoading.set(true);
     try {
       const matches = await queryTm({
         source_text: sourceText,
         src_lang: $currentProject.src_lang,
         tgt_lang: $currentProject.tgt_lang,
-        tm_ids: $projectSettings.tm_ids,
-        threshold: $projectSettings.fuzzy_threshold,
+        tm_ids: $projectSettings.tm_ids || [],
+        threshold: $projectSettings.fuzzy_threshold || 0.7,
       });
       tmMatches.set(matches);
+
+      // Auto-detect FMR repaired suggestion from top match
+      if (matches.length > 0 && matches[0].repaired_target && matches[0].repaired_target.trim()) {
+        activeAutoPatch = matches[0].repaired_target;
+      }
     } catch (e) {
       console.error('TM lookup failed:', e);
       tmMatches.set([]);
     } finally {
       tmLoading.set(false);
     }
+  }
+
+  function handleApplyAutoPatch(patchText: string) {
+    const seg = $selectedSegment;
+    if (!seg) return;
+    updateSegmentInStore(seg.id, { target_text: patchText, status: 'draft' });
+    scheduleAutoSave(seg.id, patchText, 'draft');
+    activeAutoPatch = null;
+  }
+
+  async function handleAutoPatchAll() {
+    if (!$currentProject || !$currentFile) return;
+    let patchedCount = 0;
+    for (const seg of $segments) {
+      if (!seg.target_text.trim() && seg.status === 'new') {
+        try {
+          const matches = await queryTm({
+            source_text: seg.source_text,
+            src_lang: $currentProject.src_lang,
+            tgt_lang: $currentProject.tgt_lang,
+            tm_ids: $projectSettings.tm_ids || [],
+            threshold: 0.7,
+          });
+          if (matches.length > 0 && matches[0].repaired_target) {
+            updateSegmentInStore(seg.id, {
+              target_text: matches[0].repaired_target,
+              status: 'draft',
+              match_percent: matches[0].score_pct,
+              match_origin: 'tm_repaired',
+            });
+            await updateSegment({
+              segment_id: seg.id,
+              target_text: matches[0].repaired_target,
+              status: 'draft',
+            });
+            patchedCount++;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    }
+    alert(`Auto-patch complete: ${patchedCount} fuzzy segments repaired and filled!`);
   }
 
   async function lookupTb(sourceText: string) {
@@ -209,16 +258,18 @@
         tgt_lang: $currentProject.tgt_lang,
       });
 
-      if ($projectSettings.writeback_mode === 'always' && $projectSettings.tm_ids.length > 0) {
-        for (const tmId of $projectSettings.tm_ids) {
-          await addToTm({
-            tm_id: tmId,
-            source_text: seg.source_text,
-            target_text: seg.target_text,
-            src_lang: $currentProject.src_lang,
-            tgt_lang: $currentProject.tgt_lang,
-          }).catch(() => {/* silent */});
-        }
+      const targetTmIds = ($projectSettings.tm_ids && $projectSettings.tm_ids.length > 0)
+        ? $projectSettings.tm_ids
+        : [`proj-tm-${$currentProject.id}`];
+
+      for (const tmId of targetTmIds) {
+        await addToTm({
+          tm_id: tmId,
+          source_text: seg.source_text,
+          target_text: seg.target_text,
+          src_lang: $currentProject.src_lang,
+          tgt_lang: $currentProject.tgt_lang,
+        }).catch(() => {/* silent */});
       }
 
       // If auto-propagated to repeated segments, refresh file segments
@@ -378,122 +429,165 @@
 </script>
 
 <div class="flex flex-col h-full relative">
-  <!-- Toolbar -->
-  <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
-    <!-- Filter tabs -->
-    <div class="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
-      {#each FILTERS as f}
-        <button
-          on:click={() => filterMode.set(f.value)}
-          class="px-2.5 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5
-                 {$filterMode === f.value
-                   ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-        >
-          <span>{f.label}</span>
-          {#if f.value === 'qa_warning' && $qaResults.length > 0}
-            <span class="px-1 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
-              {$qaResults.length}
-            </span>
-          {/if}
-        </button>
-      {/each}
+  <!-- Studio Toolbar -->
+  <div class="flex items-center justify-between px-3.5 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0 gap-3">
+    <!-- Left: Filter tabs + Search -->
+    <div class="flex items-center gap-2 min-w-0">
+      <!-- Filter tabs -->
+      <div class="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 shrink-0">
+        {#each FILTERS as f}
+          <button
+            on:click={() => filterMode.set(f.value)}
+            class="px-2.5 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5
+                   {$filterMode === f.value
+                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>{f.label}</span>
+            {#if f.value === 'qa_warning' && $qaResults.length > 0}
+              <span class="px-1 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                {$qaResults.length}
+              </span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+
+      <!-- Search input -->
+      <div class="relative">
+        <input
+          bind:value={$segmentSearch}
+          placeholder="Filter rows… (Ctrl+F)"
+          class="pl-7 pr-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700
+                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-40
+                 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        />
+        <span class="absolute left-2.5 top-1.5 text-xs text-gray-400">🔍</span>
+      </div>
     </div>
 
-    <!-- Find button / Search filter -->
-    <input
-      bind:value={$segmentSearch}
-      placeholder="Filter rows…"
-      class="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700
-             bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-36
-             focus:outline-none focus:ring-1 focus:ring-brand-500"
-    />
+    <!-- Right: Tools Dropdown + Actions + Inspector + Preview + Progress -->
+    <div class="flex items-center gap-2 shrink-0">
+      <!-- Tools Dropdown Menu -->
+      <div class="relative">
+        <button
+          on:click={() => (isToolsMenuOpen = !isToolsMenuOpen)}
+          class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700
+                 {isToolsMenuOpen ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
+                 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 shadow-xs"
+          title="Project Automation & Analysis Tools"
+        >
+          <span>⚡ Tools</span>
+          <span class="text-[10px] text-gray-400">▾</span>
+        </button>
 
-    <button
-      on:click={() => { isFindOpen = !isFindOpen; if (!isFindOpen) isReplaceOpen = false; }}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             {isFindOpen ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
-             hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      title="Find & Replace (Ctrl+F / Ctrl+H)"
-    >
-      🔍 Find / Replace
-    </button>
+        {#if isToolsMenuOpen}
+          <!-- Backdrop to close -->
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div class="fixed inset-0 z-40" on:click={() => (isToolsMenuOpen = false)}></div>
 
-    <!-- Pre-translate button -->
-    <button
-      on:click={handlePretranslate}
-      disabled={pretranslating}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-      title="Fill 100% exact matches from TM automatically"
-    >
-      {pretranslating ? '⚡ Pretranslating…' : '⚡ Pre-translate'}
-    </button>
+          <div class="absolute right-0 mt-1.5 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl py-1 z-50 text-xs">
+            <button
+              on:click={() => { isToolsMenuOpen = false; handlePretranslate(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-amber-500 text-base">⚡</span>
+              <div>
+                <div class="font-medium">Pre-translate 100%</div>
+                <div class="text-[10px] text-gray-400">Auto-fill exact TM matches</div>
+              </div>
+            </button>
 
-    <!-- Actions / Command Palette button -->
-    <button
-      on:click={() => (isCommandPaletteOpen = true)}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5"
-      title="Omni Command Palette (Ctrl+K)"
-    >
-      <span>⚡ Actions</span>
-      <kbd class="text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 px-1 rounded border border-gray-200 dark:border-gray-700">Ctrl+K</kbd>
-    </button>
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleAutoPatchAll(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-blue-500 text-base">🔧</span>
+              <div>
+                <div class="font-medium">Auto-Patch Fuzzy Matches</div>
+                <div class="text-[10px] text-gray-400">Batch repair numbers & terms (FMR)</div>
+              </div>
+            </button>
 
-    <!-- Toggle Inspector button -->
-    <button
-      on:click={() => (isInspectorOpen = !isInspectorOpen)}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             {isInspectorOpen ? 'bg-gray-100 dark:bg-gray-800 text-brand-600' : 'text-gray-700 dark:text-gray-300'}
-             hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-      title="Toggle Right Inspector (Ctrl+\)"
-    >
-      <span>⮌ Inspector</span>
-    </button>
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
 
-    <!-- Live Preview button -->
-    <button
-      on:click={() => {
-        activeTab = 'preview';
-        isInspectorOpen = true;
-      }}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             {isInspectorOpen && activeTab === 'preview' ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
-             hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-      title="Live In-Context Document Flow Preview"
-    >
-      <span>👁 Preview</span>
-    </button>
+            <button
+              on:click={() => { isToolsMenuOpen = false; isFindOpen = true; isReplaceOpen = false; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
+            >
+              <span class="flex items-center gap-2.5"><span>🔍</span> Find & Replace</span>
+              <kbd class="text-[10px] font-mono text-gray-400">Ctrl+H</kbd>
+            </button>
 
-    <!-- Extract Terms button -->
-    <button
-      on:click={() => (isTermExtractionOpen = true)}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-      title="Automated Terminology Extraction (ATE)"
-    >
-      <span>⚡ Extract Terms</span>
-    </button>
+            <button
+              on:click={() => { isToolsMenuOpen = false; isTermExtractionOpen = true; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-purple-500 text-base">🏷️</span>
+              <div>
+                <div class="font-medium">Extract Terminology (ATE)</div>
+                <div class="text-[10px] text-gray-400">C-value candidate extraction</div>
+              </div>
+            </button>
 
-    <!-- Freelancer Quote/Invoice button -->
-    <button
-      on:click={() => (isQuoteInvoiceOpen = true)}
-      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-      title="Freelancer Quoting & Invoicing Suite"
-    >
-      <span>💼 Invoicing</span>
-    </button>
+            <button
+              on:click={() => { isToolsMenuOpen = false; isQuoteInvoiceOpen = true; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-emerald-500 text-base">💼</span>
+              <div>
+                <div class="font-medium">Quoting & Invoicing</div>
+                <div class="text-[10px] text-gray-400">Weighted word count & billing</div>
+              </div>
+            </button>
+          </div>
+        {/if}
+      </div>
 
-    <div class="ml-auto flex items-center gap-3">
+      <!-- Actions / Command Palette button -->
+      <button
+        on:click={() => (isCommandPaletteOpen = true)}
+        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+               text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5"
+        title="Omni Command Palette (Ctrl+K)"
+      >
+        <span>⚡ Actions</span>
+        <kbd class="text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 px-1 rounded border border-gray-200 dark:border-gray-700">Ctrl+K</kbd>
+      </button>
+
+      <!-- Toggle Inspector button -->
+      <button
+        on:click={() => (isInspectorOpen = !isInspectorOpen)}
+        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+               {isInspectorOpen ? 'bg-gray-100 dark:bg-gray-800 text-brand-600' : 'text-gray-700 dark:text-gray-300'}
+               hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+        title="Toggle Right Inspector (Ctrl+\)"
+      >
+        <span>⮌ Inspector</span>
+      </button>
+
+      <!-- Live Preview button -->
+      <button
+        on:click={() => {
+          activeTab = 'preview';
+          isInspectorOpen = true;
+        }}
+        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+               {isInspectorOpen && activeTab === 'preview' ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
+               hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+        title="Live In-Context Document Flow Preview"
+      >
+        <span>👁 Preview</span>
+      </button>
+
       <!-- Progress bar -->
-      <div class="flex items-center gap-1.5">
-        <div class="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div class="h-full bg-green-500 rounded-full transition-all" style="width: {$progressStats.pct}%"></div>
+      <div class="flex items-center gap-1.5 pl-2 border-l border-gray-200 dark:border-gray-800">
+        <div class="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 rounded-full transition-all" style="width: {$progressStats.pct}%"></div>
         </div>
-        <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-          {$progressStats.pct}% ({$progressStats.translated}/{$progressStats.total})
+        <span class="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums font-mono">
+          {$progressStats.pct}%
         </span>
       </div>
     </div>
@@ -557,6 +651,8 @@
             canMergePrev={i > 0}
             canMergeNext={i < $filteredSegments.length - 1}
             activeSuggestions={activeSuggestions}
+            autoPatchSuggestion={i === $selectedIndex ? activeAutoPatch : null}
+            onApplyAutoPatch={handleApplyAutoPatch}
             onQuerySuggestions={handleQuerySuggestions}
             onSelect={() => selectedIndex.set(i)}
             onConfirm={handleConfirm}

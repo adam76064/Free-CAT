@@ -116,6 +116,11 @@ pub async fn export_file(
             .to_string_lossy().to_string()
     });
 
+    // Ensure parent directory exists
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
     parsers::export_file(&file, &segments, &output_path)
         .map_err(|e| e.to_string())?;
 

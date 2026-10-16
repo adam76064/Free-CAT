@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { open, save } from '@tauri-apps/plugin-dialog';
   import { currentProject, currentFiles, projectSettings, parseSettings } from '$lib/stores/project';
   import { openProject, importFile, exportFile, analyzeProject, importSdlppx, exportSdlrpx, exportFcat } from '$lib/ipc/project';
   import { availableTms } from '$lib/stores/tm';
@@ -131,6 +131,27 @@
 
   function openEditor(fileId: string) {
     goto(`/project/${projectId}/editor?file=${fileId}`);
+  }
+
+  async function handleExportSingleFile(file: any) {
+    if (!$currentProject) return;
+    try {
+      const ext = file.filename.split('.').pop() || '';
+      const chosenPath = await save({
+        defaultPath: file.filename,
+        filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [],
+      });
+      if (!chosenPath) return;
+
+      const outPath = await exportFile({
+        file_id: file.id,
+        project_id: $currentProject.id,
+        out_path: chosenPath,
+      });
+      alert(`Export Successful!\nTranslated document saved to:\n${outPath}`);
+    } catch (e: any) {
+      alert(`Export failed: ${e}`);
+    }
   }
 
   function formatDate(iso: string) {
@@ -291,13 +312,23 @@
                     {file.seg_count} segments · {file.word_count.toLocaleString()} words · <span class="font-mono">{file.format.toUpperCase()}</span>
                   </div>
                 </div>
-                <button
-                  on:click={() => openEditor(file.id)}
-                  class="px-3.5 py-1.5 text-sm font-medium bg-brand-500 hover:bg-brand-600
-                         text-white rounded-lg transition-colors shadow-xs"
-                >
-                  Translate →
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    on:click={() => handleExportSingleFile(file)}
+                    class="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-700
+                           hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg transition-colors shadow-xs"
+                    title="Export translated file to your computer"
+                  >
+                    ⬇ Export
+                  </button>
+                  <button
+                    on:click={() => openEditor(file.id)}
+                    class="px-3.5 py-1.5 text-sm font-medium bg-brand-500 hover:bg-brand-600
+                           text-white rounded-lg transition-colors shadow-xs"
+                  >
+                    Translate →
+                  </button>
+                </div>
               </div>
             {/each}
           </div>

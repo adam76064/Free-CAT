@@ -36,17 +36,38 @@ pub fn repair_fuzzy_match(
     let query_nums: Vec<&str> = num_re.find_iter(query_source).map(|m| m.as_str()).collect();
     let tm_source_nums: Vec<&str> = num_re.find_iter(tm_source).map(|m| m.as_str()).collect();
 
+    let to_arabic_indic = |s: &str| -> String {
+        s.chars().map(|c| match c {
+            '0' => '٠', '1' => '١', '2' => '٢', '3' => '٣', '4' => '٤',
+            '5' => '٥', '6' => '٦', '7' => '٧', '8' => '٨', '9' => '٩',
+            other => other,
+        }).collect()
+    };
+
     // If both source sentences contain the same count of numbers but with differing values:
     if !query_nums.is_empty() && query_nums.len() == tm_source_nums.len() {
         for (q_num, tm_num) in query_nums.iter().zip(tm_source_nums.iter()) {
-            if q_num != tm_num && repaired.contains(tm_num) {
-                // Replace the old TM number in the target with the query number
-                repaired = repaired.replacen(tm_num, q_num, 1);
-                changes.push(FmrChange {
-                    original_token: tm_num.to_string(),
-                    replacement_token: q_num.to_string(),
-                    change_type: "number".into(),
-                });
+            if q_num != tm_num {
+                if repaired.contains(tm_num) {
+                    // Replace the old TM number in the target with the query number
+                    repaired = repaired.replacen(tm_num, q_num, 1);
+                    changes.push(FmrChange {
+                        original_token: tm_num.to_string(),
+                        replacement_token: q_num.to_string(),
+                        change_type: "number".into(),
+                    });
+                } else {
+                    let tm_num_ar = to_arabic_indic(tm_num);
+                    let q_num_ar = to_arabic_indic(q_num);
+                    if repaired.contains(&tm_num_ar) {
+                        repaired = repaired.replacen(&tm_num_ar, &q_num_ar, 1);
+                        changes.push(FmrChange {
+                            original_token: tm_num_ar,
+                            replacement_token: q_num_ar,
+                            change_type: "number".into(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -120,5 +141,33 @@ mod tests {
         let fmr = res.unwrap();
         assert_eq!(fmr.repaired_target, "ينتهي العقد تلقائياً.");
         assert_eq!(fmr.changes[0].change_type, "term");
+    }
+
+    #[test]
+    fn test_trial_segment_5_to_6_repair() {
+        let query_src = "This is sentence 6 in this document.";
+        let tm_src = "This is sentence 5 in this document.";
+        let tm_tgt = "هذه جملة رقم 5 في الوثيقة.";
+
+        let res = repair_fuzzy_match(query_src, tm_src, tm_tgt, &[]);
+        assert!(res.is_some());
+        let fmr = res.unwrap();
+        assert_eq!(fmr.repaired_target, "هذه جملة رقم 6 في الوثيقة.");
+        assert_eq!(fmr.changes[0].original_token, "5");
+        assert_eq!(fmr.changes[0].replacement_token, "6");
+    }
+
+    #[test]
+    fn test_arabic_indic_numeral_repair() {
+        let query_src = "Chapter 8 summary.";
+        let tm_src = "Chapter 7 summary.";
+        let tm_tgt = "ملخص الفصل ٧.";
+
+        let res = repair_fuzzy_match(query_src, tm_src, tm_tgt, &[]);
+        assert!(res.is_some());
+        let fmr = res.unwrap();
+        assert_eq!(fmr.repaired_target, "ملخص الفصل ٨.");
+        assert_eq!(fmr.changes[0].original_token, "٧");
+        assert_eq!(fmr.changes[0].replacement_token, "٨");
     }
 }

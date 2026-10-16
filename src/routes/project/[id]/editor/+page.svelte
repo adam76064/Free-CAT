@@ -9,6 +9,7 @@
   import { listTms } from '$lib/ipc/tm';
   import { availableTms } from '$lib/stores/tm';
   import SegmentGrid from '$lib/components/editor/SegmentGrid.svelte';
+  import { save } from '@tauri-apps/plugin-dialog';
   import { parseSettings } from '$lib/stores/project';
 
   $: projectId = $page.params.id as string;
@@ -53,13 +54,24 @@
   async function handleExport() {
     const pid = projectId;
     const fid = fileId;
-    if (!pid || !fid) return;
-    exporting = true;
+    if (!pid || !fid || !$currentFile) return;
+
     try {
-      const outPath = await exportFile({ file_id: fid, project_id: pid });
-      console.log('Exported to:', outPath);
+      const defaultFilename = $currentFile.filename;
+      const ext = defaultFilename.split('.').pop() || '';
+      const chosenPath = await save({
+        defaultPath: defaultFilename,
+        filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [],
+      });
+      if (!chosenPath) return;
+
+      exporting = true;
+      error = '';
+      const outPath = await exportFile({ file_id: fid, project_id: pid, out_path: chosenPath });
+      alert(`Export Successful!\nTranslated document saved to:\n${outPath}`);
     } catch (e: any) {
       error = `Export failed: ${e}`;
+      alert(`Export failed: ${e}`);
     } finally {
       exporting = false;
     }

@@ -82,6 +82,8 @@ pub fn run() {
             commands::termbase::create_tb,
             commands::termbase::delete_tb,
             commands::termbase::extract_terms,
+            commands::termbase::get_terms,
+            commands::termbase::delete_term,
             // QA commands
             commands::qa::run_qa,
             commands::qa::get_qa_results,

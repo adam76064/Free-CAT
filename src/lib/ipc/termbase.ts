@@ -47,12 +47,20 @@ export async function listTbs(): Promise<TbInfo[]> {
   return invoke('list_tbs');
 }
 
-export async function createTb(name: string): Promise<string> {
-  return invoke('create_tb', { name });
+export async function createTb(name: string): Promise<TbInfo> {
+  return invoke('create_tb', { args: { name } });
 }
 
 export async function deleteTb(id: string): Promise<void> {
-  return invoke('delete_tb', { id });
+  return invoke('delete_tb', { tbId: id });
+}
+
+export async function getTerms(tbId: string): Promise<TermEntry[]> {
+  return invoke('get_terms', { tbId });
+}
+
+export async function deleteTerm(tbId: string, termId: number): Promise<void> {
+  return invoke('delete_term', { tbId, termId });
 }
 
 export async function importTbx(tb_id: string, tbx_path: string): Promise<number> {

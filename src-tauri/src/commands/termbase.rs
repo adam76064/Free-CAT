@@ -206,3 +206,36 @@ pub async fn extract_terms(
     let max_n = max_ngram.unwrap_or(3);
     Ok(crate::core::tm::ate::extract_terms(&text, min_f, max_n))
 }
+
+/// Get all terms in a termbase.
+#[tauri::command]
+pub async fn get_terms(
+    tb_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TermEntry>, String> {
+    let entry = state.tb_index.lock().unwrap()
+        .iter().find(|e| e.id == tb_id).cloned()
+        .ok_or_else(|| format!("TB {} not found", tb_id))?;
+
+    let tb = TbDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    tb.get_all().map_err(|e| e.to_string())
+}
+
+/// Delete a specific term from a termbase.
+#[tauri::command]
+pub async fn delete_term(
+    tb_id: String,
+    term_id: i64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let entry = state.tb_index.lock().unwrap()
+        .iter().find(|e| e.id == tb_id).cloned()
+        .ok_or_else(|| format!("TB {} not found", tb_id))?;
+
+    let tb = TbDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    tb.delete_term(term_id).map_err(|e| e.to_string())
+}

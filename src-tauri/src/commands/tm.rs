@@ -30,9 +30,15 @@ pub async fn query_tm(
 ) -> Result<Vec<TmMatchResult>, String> {
     let tm_index = state.tm_index.lock().unwrap().clone();
 
+    let candidates: Vec<_> = if args.tm_ids.is_empty() {
+        tm_index.iter().filter(|e| (e.src_lang == args.src_lang && e.tgt_lang == args.tgt_lang) || e.id.starts_with("proj-tm-")).collect()
+    } else {
+        tm_index.iter().filter(|e| args.tm_ids.contains(&e.id)).collect()
+    };
+
     let mut all_results: Vec<TmMatchResult> = Vec::new();
 
-    for tm_entry in tm_index.iter().filter(|e| args.tm_ids.contains(&e.id)) {
+    for tm_entry in candidates {
         let penalty = args.penalties.get(&tm_entry.id).copied().unwrap_or(0.0);
         let tm = TmDb::open(
             tm_entry.id.clone(),
@@ -297,7 +303,13 @@ pub async fn concordance_search(
     let index = state.tm_index.lock().unwrap().clone();
     let mut all: Vec<TranslationUnit> = Vec::new();
 
-    for entry in index.iter().filter(|e| tm_ids.contains(&e.id)) {
+    let candidates: Vec<_> = if tm_ids.is_empty() {
+        index.iter().collect()
+    } else {
+        index.iter().filter(|e| tm_ids.contains(&e.id)).collect()
+    };
+
+    for entry in candidates {
         let tm = TmDb::open(entry.id.clone(), entry.name.clone(), entry.path.clone())
             .map_err(|e| e.to_string())?;
         let mut results = tm.concordance_search(&query, limit)

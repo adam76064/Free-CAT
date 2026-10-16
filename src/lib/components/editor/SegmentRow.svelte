@@ -17,6 +17,7 @@
   export let canMergePrev: boolean = false;
   export let canMergeNext: boolean = false;
   export let activeSuggestions: SuggestionItem[] = [];
+  export let autoPatchSuggestion: string | null = null;
   export let onSelect: () => void;
   export let onConfirm: (seg: Segment) => void;
   export let onTargetChange: (id: string, text: string) => void;
@@ -25,6 +26,7 @@
   export let onMergePrev: (segId: string) => void;
   export let onToggleBookmark: (segId: string) => void;
   export let onQuerySuggestions: (word: string) => void = () => {};
+  export let onApplyAutoPatch: (patch: string) => void = () => {};
 
   let targetEl: HTMLDivElement;
   let suggestVisible = false;
@@ -135,7 +137,14 @@
       return;
     }
 
-    // Ctrl+Enter or Tab (when no suggestions popup): Confirm and advance
+    // Tab when target is empty and autoPatchSuggestion is available: apply auto patch!
+    if (e.key === 'Tab' && autoPatchSuggestion && (!targetEl?.textContent || !targetEl.textContent.trim())) {
+      e.preventDefault();
+      onApplyAutoPatch(autoPatchSuggestion);
+      return;
+    }
+
+    // Ctrl+Enter or Tab (when no suggestions popup and target has content): Confirm and advance
     if (e.key === 'Tab' || (e.key === 'Enter' && (e.ctrlKey || !e.shiftKey))) {
       e.preventDefault();
       suggestVisible = false;
@@ -195,38 +204,43 @@
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
-  class="grid grid-cols-[2.5rem_1fr_1fr] min-h-[3rem] border-b border-gray-100 dark:border-gray-800
-         transition-colors cursor-pointer relative {rowBg}"
+  class="grid grid-cols-[2.75rem_1fr_1fr] min-h-[3rem] border-b border-gray-100 dark:border-gray-800/80
+         transition-colors cursor-pointer relative group {rowBg}"
   on:click={onSelect}
   role="row"
   tabindex="-1"
   aria-selected={isSelected}
 >
-  <!-- Row number + badges -->
-  <div class="flex flex-col items-center justify-start pt-2 px-1 gap-1 shrink-0">
-    <span class="text-xs text-gray-400 dark:text-gray-600 tabular-nums font-mono leading-none select-none">
-      {segment.seq_number}
-    </span>
-    {#if segment.match_percent !== null && segment.match_percent !== undefined}
-      <TmMatchBadge pct={segment.match_percent} />
-    {/if}
-    {#if segment.comment}
-      <span class="text-xs text-blue-500" title="Has comment: {segment.comment}">💬</span>
-    {/if}
-    <button
-      on:click|stopPropagation={() => onToggleBookmark(segment.id)}
-      class="text-xs leading-none transition-transform hover:scale-125
-             {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
-      title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
-    >
-      ★
-    </button>
+  <!-- Row number + Status indicator + bookmark -->
+  <div class="flex items-center justify-between px-2 py-2 shrink-0 select-none border-r border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20">
+    <div class="flex flex-col items-center gap-1">
+      <span class="text-xs text-gray-400 dark:text-gray-500 tabular-nums font-mono leading-none">
+        {segment.seq_number}
+      </span>
+      <span
+        class="w-1.5 h-1.5 rounded-full {segment.status === 'translated' ? 'bg-emerald-500' : segment.status === 'draft' ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-700'}"
+        title={STATUS_LABELS[segment.status]}
+      ></span>
+    </div>
+    <div class="flex flex-col items-center gap-1">
+      <button
+        on:click|stopPropagation={() => onToggleBookmark(segment.id)}
+        class="text-xs leading-none transition-transform hover:scale-125
+               {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
+        title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
+      >
+        ★
+      </button>
+      {#if segment.match_percent !== null && segment.match_percent !== undefined}
+        <TmMatchBadge pct={segment.match_percent} />
+      {/if}
+    </div>
   </div>
 
   <!-- Source (read-only) -->
   <div
-    class="py-2 px-3 text-sm text-gray-700 dark:text-gray-300 editor-text
-           border-r border-gray-100 dark:border-gray-800 select-text leading-relaxed"
+    class="py-2.5 px-3.5 text-sm text-gray-800 dark:text-gray-200 editor-text
+           border-r border-gray-100 dark:border-gray-800 select-text leading-relaxed font-editor"
     dir="auto"
   >
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -235,7 +249,25 @@
 
   <!-- Target (editable) -->
   <!-- svelte-ignore a11y-interactive-supports-focus -->
-  <div class="relative">
+  <div class="relative flex flex-col justify-start">
+    <!-- Auto-Patch Pill Banner (when available and target empty) -->
+    {#if isSelected && autoPatchSuggestion && (!segment.target_text || !segment.target_text.trim())}
+      <div class="m-1.5 px-2.5 py-1 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 flex items-center justify-between text-xs animate-in fade-in z-20 shadow-xs">
+        <div class="flex items-center gap-1.5 min-w-0 pr-2">
+          <span class="text-amber-700 dark:text-amber-300 font-bold shrink-0">⚡ Auto-Patch:</span>
+          <span class="font-editor text-gray-900 dark:text-gray-100 font-semibold truncate" dir="auto">{autoPatchSuggestion}</span>
+        </div>
+        <button
+          type="button"
+          on:mousedown|preventDefault={() => onApplyAutoPatch(autoPatchSuggestion)}
+          class="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-medium text-[11px] shrink-0 transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+        >
+          <span>Apply</span>
+          <kbd class="text-[9px] bg-amber-600 px-1 py-0.2 rounded font-mono">Tab</kbd>
+        </button>
+      </div>
+    {/if}
+
     {#if isSelected}
       <AutoSuggestPopup
         visible={suggestVisible}
@@ -244,6 +276,7 @@
         onSelect={handleApplySuggestion}
       />
     {/if}
+
     <div
       bind:this={targetEl}
       contenteditable="true"
@@ -251,8 +284,8 @@
       on:input={handleInput}
       on:keydown={handleKeydown}
       on:focus={onSelect}
-      class="py-2 px-3 text-sm editor-text outline-none min-h-[3rem] leading-relaxed
-             text-gray-900 dark:text-white caret-brand-500
+      class="py-2.5 px-3.5 text-sm editor-text outline-none flex-1 min-h-[3rem] leading-relaxed
+             text-gray-900 dark:text-white caret-brand-500 font-editor
              {isSelected ? '' : 'text-gray-600 dark:text-gray-300'}"
       dir="auto"
       spellcheck="true"
@@ -261,80 +294,43 @@
       aria-multiline="true"
       aria-label="Translation target for segment {segment.seq_number}"
     ></div>
-  </div>
-</div>
 
-<!-- Status & Action Bar (when selected) -->
-{#if isSelected}
-  <div class="flex items-center justify-between px-3 py-1
-              bg-brand-50 dark:bg-brand-950/40
-              border-b border-brand-200 dark:border-brand-800/60 text-xs">
-    <!-- Left: Status badge & comment -->
-    <div class="flex items-center gap-2">
-      <span class="{STATUS_COLORS[segment.status]} px-1.5 py-0.5 rounded text-[11px] font-medium">
-        {STATUS_LABELS[segment.status]}
-      </span>
-      {#if segment.comment}
-        <span class="text-gray-500 dark:text-gray-400 italic truncate max-w-[200px]" title={segment.comment}>
-          💬 {segment.comment}
-        </span>
-      {/if}
-    </div>
-
-    <!-- Center/Right: Quick Actions -->
-    <div class="flex items-center gap-1">
+    <!-- Elegant floating quick-action hover buttons on top right -->
+    <div class="absolute top-1.5 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 dark:bg-gray-900/95 backdrop-blur-xs px-1 py-0.5 rounded-md border border-gray-200 dark:border-gray-700/80 shadow-xs z-10 {isSelected ? 'opacity-90' : ''}">
       <button
-        on:click={handleCopySource}
-        class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-               text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="Copy source into target (Alt+Ins)"
-      >
-        📋 Copy Source
-      </button>
-
+        type="button"
+        on:click|stopPropagation={handleCopySource}
+        class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        title="Copy Source (Alt+Ins)"
+      >📋</button>
       <button
-        on:click={handleClearTarget}
-        class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-               text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="Clear target translation"
-      >
-        🧹 Clear
-      </button>
-
+        type="button"
+        on:click|stopPropagation={handleClearTarget}
+        class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        title="Clear Target"
+      >🧹</button>
       <button
-        on:click={() => onSplit(segment.id)}
-        class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-               text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="Split segment (Ctrl+Alt+S)"
-      >
-        ✂ Split
-      </button>
-
+        type="button"
+        on:click|stopPropagation={() => onSplit(segment.id)}
+        class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        title="Split Segment (Ctrl+Alt+S)"
+      >✂</button>
       {#if canMergeNext}
         <button
-          on:click={() => onMergeNext(segment.id)}
-          class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-                 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          title="Merge with next segment (Ctrl+J)"
-        >
-          ⤹ Merge Next
-        </button>
+          type="button"
+          on:click|stopPropagation={() => onMergeNext(segment.id)}
+          class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title="Merge Next (Ctrl+J)"
+        >⤹</button>
       {/if}
-
       {#if canMergePrev}
         <button
-          on:click={() => onMergePrev(segment.id)}
-          class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-                 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          title="Merge with previous segment (Ctrl+Shift+J)"
-        >
-          ⤸ Merge Prev
-        </button>
+          type="button"
+          on:click|stopPropagation={() => onMergePrev(segment.id)}
+          class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title="Merge Prev (Ctrl+Shift+J)"
+        >⤸</button>
       {/if}
-
-      <span class="text-gray-400 dark:text-gray-600 pl-2 select-none text-[11px]">
-        Ctrl+Enter to confirm
-      </span>
     </div>
   </div>
-{/if}
+</div>

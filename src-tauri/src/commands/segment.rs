@@ -138,9 +138,17 @@ pub async fn confirm_segment(
 
     // Auto-propagate to repeated segments if enabled in project settings
     let mut propagated = 0;
+    let mut tm_ids: Vec<String> = Vec::new();
+    let mut src_l = args.src_lang.clone();
+    let mut tgt_l = args.tgt_lang.clone();
+
     if let Ok(Some(proj)) = db.get_project(&args.project_id) {
         let settings: crate::core::models::ProjectSettings = serde_json::from_str(&proj.settings)
             .unwrap_or_default();
+        tm_ids = settings.tm_ids;
+        if src_l.is_empty() { src_l = proj.src_lang; }
+        if tgt_l.is_empty() { tgt_l = proj.tgt_lang; }
+
         if settings.auto_propagate {
             if let Ok(count) = db.propagate_translation(
                 &args.project_id,
@@ -152,6 +160,39 @@ pub async fn confirm_segment(
                 if propagated > 0 {
                     log::info!("Auto-propagated translation to {} repetitions", propagated);
                 }
+            }
+        }
+    }
+
+    // Drop db lock before TM operations
+    drop(db);
+
+    // Fallback to project TM if no tm_ids configured
+    let default_proj_tm = format!("proj-tm-{}", args.project_id);
+    if !tm_ids.contains(&default_proj_tm) {
+        tm_ids.push(default_proj_tm);
+    }
+
+    let tm_index = state.tm_index.lock().unwrap().clone();
+    for tm_id in &tm_ids {
+        if let Some(entry) = tm_index.iter().find(|e| &e.id == tm_id) {
+            if let Ok(tm) = crate::core::db::tm_db::TmDb::open(entry.id.clone(), entry.name.clone(), entry.path.clone()) {
+                let tu = crate::core::models::TranslationUnit {
+                    id:          None,
+                    source_lang: src_l.clone(),
+                    target_lang: tgt_l.clone(),
+                    source_text: args.source_text.clone(),
+                    target_text: args.target_text.clone(),
+                    created_at:  now.clone(),
+                    modified_at: now.clone(),
+                    created_by:  None,
+                    client:      None,
+                    domain:      None,
+                    source_file: args.file_name.clone(),
+                    usage_count: Some(1),
+                    metadata:    None,
+                };
+                let _ = tm.upsert(&tu);
             }
         }
     }

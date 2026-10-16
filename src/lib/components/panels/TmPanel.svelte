@@ -165,7 +165,7 @@
                 </div>
                 <div class="flex items-center gap-1.5">
                   <button
-                    onclick={() => onApply(match.target_text)}
+                    onclick={() => onApply(match.repaired_target ?? match.target_text)}
                     class="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-brand-500 hover:text-white transition-colors"
                   >
                     Apply
@@ -179,8 +179,8 @@
               <div
                 class="text-xs text-gray-500 dark:text-gray-400 mb-1 line-clamp-2 font-editor cursor-pointer"
                 title={match.source_text}
-                onclick={() => onApply(match.target_text)}
-                onkeydown={(e) => e.key === 'Enter' && onApply(match.target_text)}
+                onclick={() => onApply(match.repaired_target ?? match.target_text)}
+                onkeydown={(e) => e.key === 'Enter' && onApply(match.repaired_target ?? match.target_text)}
                 role="button"
                 tabindex="0"
               >
@@ -190,8 +190,8 @@
               <!-- Target text -->
               <div
                 class="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 font-editor cursor-pointer"
-                onclick={() => onApply(match.target_text)}
-                onkeydown={(e) => e.key === 'Enter' && onApply(match.target_text)}
+                onclick={() => onApply(match.repaired_target ?? match.target_text)}
+                onkeydown={(e) => e.key === 'Enter' && onApply(match.repaired_target ?? match.target_text)}
                 role="button"
                 tabindex="0"
               >

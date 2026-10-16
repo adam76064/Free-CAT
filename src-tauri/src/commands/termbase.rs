@@ -194,3 +194,15 @@ pub async fn delete_tb(
     }
     Ok(())
 }
+
+/// Automatically extract candidate terms using C-value collocation scoring.
+#[tauri::command]
+pub async fn extract_terms(
+    text: String,
+    min_freq: Option<usize>,
+    max_ngram: Option<usize>,
+) -> Result<Vec<crate::core::tm::ate::ExtractedTerm>, String> {
+    let min_f = min_freq.unwrap_or(2);
+    let max_n = max_ngram.unwrap_or(3);
+    Ok(crate::core::tm::ate::extract_terms(&text, min_f, max_n))
+}

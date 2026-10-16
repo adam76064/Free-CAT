@@ -61,6 +61,22 @@
     return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  async function handleImportFcat() {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Free-CAT Package (*.fcat)', extensions: ['fcat'] }],
+      });
+      if (!selected) return;
+      const fcatPath = typeof selected === 'string' ? selected : (selected as string[])[0];
+      const importedProj = await invoke<Project>('import_fcat', { fcatPath });
+      projects = [importedProj, ...projects];
+      goto(`/project/${importedProj.id}`);
+    } catch (e: any) {
+      error = `Failed to import package: ${e}`;
+    }
+  }
+
   const COMMON_LANGS: [string, string][] = [
     ['en-US', 'English (US)'], ['en-GB', 'English (UK)'],
     ['fr-FR', 'French'], ['de-DE', 'German'], ['es-ES', 'Spanish'],
@@ -80,12 +96,21 @@
         {projects.length} project{projects.length !== 1 ? 's' : ''}
       </p>
     </div>
-    <button
-      on:click={() => (showNewModal = true)}
-      class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition-colors"
-    >
-      + New Project
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        on:click={handleImportFcat}
+        class="px-3.5 py-2 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
+        title="Import a single-file .fcat project package archive"
+      >
+        <span>📦 Import .fcat Package</span>
+      </button>
+      <button
+        on:click={() => (showNewModal = true)}
+        class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        + New Project
+      </button>
+    </div>
   </div>
 
   {#if error}

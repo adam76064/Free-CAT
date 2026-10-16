@@ -103,4 +103,50 @@ export async function exportSdlrpx(args: {
   });
 }
 
+export interface AnalysisBand {
+  id: string;
+  name: string;
+  match_range: string;
+  segments: number;
+  words: number;
+  default_rate_pct: number;
+  weighted_words: number;
+}
+
+export interface DetailedAnalysisReport {
+  project_id: string;
+  total_words: number;
+  total_segments: number;
+  bands: AnalysisBand[];
+  total_weighted_words: number;
+}
+
+export async function getDetailedAnalysis(
+  projectId: string,
+  fileIds: string[]
+): Promise<DetailedAnalysisReport> {
+  return invoke('get_detailed_analysis', {
+    projectId,
+    fileIds,
+  });
+}
+
+export async function exportFcat(
+  projectId: string,
+  outPath: string
+): Promise<string> {
+  return invoke('export_fcat', {
+    projectId,
+    outPath,
+  });
+}
+
+export async function importFcat(
+  fcatPath: string
+): Promise<Project> {
+  return invoke('import_fcat', {
+    fcatPath,
+  });
+}
+
 

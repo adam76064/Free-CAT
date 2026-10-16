@@ -5,15 +5,18 @@
   import { page } from '$app/stores';
   import { open } from '@tauri-apps/plugin-dialog';
   import { currentProject, currentFiles, projectSettings, parseSettings } from '$lib/stores/project';
-  import { openProject, importFile, exportFile, analyzeProject, importSdlppx, exportSdlrpx } from '$lib/ipc/project';
+  import { openProject, importFile, exportFile, analyzeProject, importSdlppx, exportSdlrpx, exportFcat } from '$lib/ipc/project';
   import { availableTms } from '$lib/stores/tm';
   import { listTms } from '$lib/ipc/tm';
+  import QuoteInvoiceModal from '$lib/components/analysis/QuoteInvoiceModal.svelte';
 
   $: projectId = $page.params.id as string;
 
   let loading = true;
   let importing = false;
   let exportingSdlrpx = false;
+  let exportingFcat = false;
+  let showInvoiceModal = false;
   let analysis: any = null;
   let error = '';
   let showAnalysisModal = false;
@@ -110,6 +113,22 @@
     }
   }
 
+  async function handleExportFcat() {
+    if (!$currentProject) return;
+    exportingFcat = true;
+    error = '';
+    try {
+      const sanitizedName = $currentProject.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const outPath = `${sanitizedName}.fcat`;
+      await exportFcat($currentProject.id, outPath);
+      alert(`Project successfully exported to single-file .fcat archive:\n${outPath}`);
+    } catch (e: any) {
+      error = `Exporting .fcat failed: ${e}`;
+    } finally {
+      exportingFcat = false;
+    }
+  }
+
   function openEditor(fileId: string) {
     goto(`/project/${projectId}/editor?file=${fileId}`);
   }
@@ -171,6 +190,24 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button
+              on:click={() => showInvoiceModal = true}
+              class="px-3.5 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
+                     hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200
+                     text-sm font-medium rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+              title="Open Freelancer Quoting & Invoicing Suite"
+            >
+              <span>💼 Quoting & Invoicing</span>
+            </button>
+            <button
+              on:click={handleExportFcat}
+              disabled={exportingFcat}
+              class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50
+                     text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+              title="Export complete project into a portable .fcat single-file archive"
+            >
+              <span>{exportingFcat ? 'Packaging…' : '📦 Export .fcat'}</span>
+            </button>
             {#if analysis}
               <button
                 on:click={() => showAnalysisModal = true}
@@ -361,3 +398,10 @@
     </div>
   </div>
 {/if}
+
+<QuoteInvoiceModal
+  isOpen={showInvoiceModal}
+  onClose={() => showInvoiceModal = false}
+  projectId={projectId}
+  fileIds={$currentFiles.map(f => f.id)}
+/>

@@ -113,3 +113,32 @@ pub async fn delete_project(
     log::info!("Deleted project: {}", id);
     Ok(())
 }
+
+/// Export an entire project as a single-file portable .fcat package archive.
+#[tauri::command]
+pub async fn export_fcat(
+    project_id: String,
+    out_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let db = state.project_db.lock().unwrap();
+    let out = std::path::Path::new(&out_path);
+    crate::core::packages::fcat::export_fcat(&project_id, &db, out)
+        .map_err(|e| e.to_string())?;
+    log::info!("Exported project {} to .fcat at {}", project_id, out_path);
+    Ok(out_path)
+}
+
+/// Import a .fcat package archive into Free-CAT.
+#[tauri::command]
+pub async fn import_fcat(
+    fcat_path: String,
+    state: State<'_, AppState>,
+) -> Result<Project, String> {
+    let db = state.project_db.lock().unwrap();
+    let path = std::path::Path::new(&fcat_path);
+    let proj = crate::core::packages::fcat::import_fcat(path, &db, &state.data_dir)
+        .map_err(|e| e.to_string())?;
+    log::info!("Imported .fcat package: {} (id: {})", proj.name, proj.id);
+    Ok(proj)
+}

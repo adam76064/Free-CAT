@@ -14,6 +14,7 @@ export interface TmMatch {
   tm_name: string;
   is_exact: boolean;
   is_context: boolean;
+  repaired_target?: string;
 }
 
 export interface TmInfo {

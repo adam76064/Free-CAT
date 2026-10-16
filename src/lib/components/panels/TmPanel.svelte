@@ -148,34 +148,76 @@
       {:else}
         <div class="divide-y divide-gray-100 dark:divide-gray-800">
           {#each $tmMatches as match, i (match.tu_id)}
-            <button
-              onclick={() => onApply(match.target_text)}
+            <div
               class="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
             >
               <div class="flex items-center justify-between mb-1.5">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <TmMatchBadge pct={match.score_pct} />
+                  {#if match.repaired_target}
+                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                      ⚡ FMR Repaired
+                    </span>
+                  {/if}
                   <span class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">
                     {match.tm_name}
                   </span>
                 </div>
-                <kbd class="text-xs text-gray-400 dark:text-gray-600 font-mono hidden group-hover:inline">
-                  Alt+{i + 1}
-                </kbd>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    onclick={() => onApply(match.target_text)}
+                    class="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-brand-500 hover:text-white transition-colors"
+                  >
+                    Apply
+                  </button>
+                  <kbd class="text-xs text-gray-400 dark:text-gray-600 font-mono hidden group-hover:inline">
+                    Alt+{i + 1}
+                  </kbd>
+                </div>
               </div>
               <!-- Source with diff highlighting -->
               <div
-                class="text-xs text-gray-500 dark:text-gray-400 mb-1 line-clamp-2 font-editor"
+                class="text-xs text-gray-500 dark:text-gray-400 mb-1 line-clamp-2 font-editor cursor-pointer"
                 title={match.source_text}
+                onclick={() => onApply(match.target_text)}
+                onkeydown={(e) => e.key === 'Enter' && onApply(match.target_text)}
+                role="button"
+                tabindex="0"
               >
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -->
                 {@html highlightDiff(match.source_text, $selectedSegment?.source_text ?? '')}
               </div>
               <!-- Target text -->
-              <div class="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 font-editor">
+              <div
+                class="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 font-editor cursor-pointer"
+                onclick={() => onApply(match.target_text)}
+                onkeydown={(e) => e.key === 'Enter' && onApply(match.target_text)}
+                role="button"
+                tabindex="0"
+              >
                 {match.target_text}
               </div>
-            </button>
+
+              <!-- Repaired target (Fuzzy Match Repair) -->
+              {#if match.repaired_target}
+                <div class="mt-2.5 p-2 rounded-lg bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-800/60 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                      <span>⚡ Auto-Repaired Match:</span>
+                    </span>
+                    <button
+                      onclick={() => onApply(match.repaired_target!)}
+                      class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-medium rounded transition-colors shadow-xs"
+                    >
+                      Apply Repaired ↵
+                    </button>
+                  </div>
+                  <div class="text-xs text-gray-900 dark:text-gray-100 font-editor font-medium">
+                    {match.repaired_target}
+                  </div>
+                </div>
+              {/if}
+            </div>
           {/each}
         </div>
       {/if}

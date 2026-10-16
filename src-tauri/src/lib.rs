@@ -51,6 +51,8 @@ pub fn run() {
             commands::project::list_projects,
             commands::project::delete_project,
             commands::project::get_project,
+            commands::project::export_fcat,
+            commands::project::import_fcat,
             // Segment commands
             commands::segment::get_segments,
             commands::segment::update_segment,
@@ -79,6 +81,7 @@ pub fn run() {
             commands::termbase::list_tbs,
             commands::termbase::create_tb,
             commands::termbase::delete_tb,
+            commands::termbase::extract_terms,
             // QA commands
             commands::qa::run_qa,
             commands::qa::get_qa_results,
@@ -86,6 +89,7 @@ pub fn run() {
             // Analysis commands
             commands::analysis::analyze_project,
             commands::analysis::get_analysis_report,
+            commands::analysis::get_detailed_analysis,
             commands::analysis::pre_translate,
             // MT commands
             commands::mt::get_mt_suggestion,

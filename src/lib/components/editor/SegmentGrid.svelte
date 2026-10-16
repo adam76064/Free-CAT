@@ -22,6 +22,9 @@
   import QaPanel from '$lib/components/panels/QaPanel.svelte';
   import AiPanel from '$lib/components/panels/AiPanel.svelte';
   import CommentsPanel from '$lib/components/panels/CommentsPanel.svelte';
+  import LivePreviewPanel from '$lib/components/panels/LivePreviewPanel.svelte';
+  import TermExtractionModal from '$lib/components/panels/TermExtractionModal.svelte';
+  import QuoteInvoiceModal from '$lib/components/analysis/QuoteInvoiceModal.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
@@ -33,10 +36,14 @@
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
   let gridContainer: HTMLDivElement;
-  let activeTab: 'tm' | 'tb' | 'qa' | 'ai' | 'comments' = 'tm';
+  let activeTab: 'tm' | 'tb' | 'qa' | 'ai' | 'comments' | 'preview' = 'tm';
   let isInspectorOpen = true;
   let isCommandPaletteOpen = false;
+  let isTermExtractionOpen = false;
+  let isQuoteInvoiceOpen = false;
   let pretranslating = false;
+
+  $: documentText = $segments.map(s => s.source_text).join('. ');
 
   // In-memory Trie for AutoSuggest
   const suggestTrie = new SuggestionTrie();
@@ -445,6 +452,40 @@
       <span>⮌ Inspector</span>
     </button>
 
+    <!-- Live Preview button -->
+    <button
+      on:click={() => {
+        activeTab = 'preview';
+        isInspectorOpen = true;
+      }}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             {isInspectorOpen && activeTab === 'preview' ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
+             hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+      title="Live In-Context Document Flow Preview"
+    >
+      <span>👁 Preview</span>
+    </button>
+
+    <!-- Extract Terms button -->
+    <button
+      on:click={() => (isTermExtractionOpen = true)}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+      title="Automated Terminology Extraction (ATE)"
+    >
+      <span>⚡ Extract Terms</span>
+    </button>
+
+    <!-- Freelancer Quote/Invoice button -->
+    <button
+      on:click={() => (isQuoteInvoiceOpen = true)}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+      title="Freelancer Quoting & Invoicing Suite"
+    >
+      <span>💼 Invoicing</span>
+    </button>
+
     <div class="ml-auto flex items-center gap-3">
       <!-- Progress bar -->
       <div class="flex items-center gap-1.5">
@@ -592,6 +633,15 @@
               <span class="w-2 h-2 rounded-full bg-blue-500"></span>
             {/if}
           </button>
+          <button
+            on:click={() => (activeTab = 'preview')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                   {activeTab === 'preview'
+                     ? 'bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>👁 Flow</span>
+          </button>
         </div>
 
         <!-- Tab content -->
@@ -609,6 +659,8 @@
             }} />
           {:else if activeTab === 'comments'}
             <CommentsPanel />
+          {:else if activeTab === 'preview'}
+            <LivePreviewPanel onSelectSegment={(idx) => jumpToSegment(idx)} />
           {/if}
         </div>
       </div>
@@ -620,12 +672,31 @@
 <CommandPalette
   isOpen={isCommandPaletteOpen}
   onToggleInspector={() => (isInspectorOpen = !isInspectorOpen)}
+  onTogglePreview={() => {
+    activeTab = 'preview';
+    isInspectorOpen = true;
+  }}
   onOpenFind={() => { isFindOpen = true; isReplaceOpen = false; }}
   onOpenReplace={() => { isFindOpen = true; isReplaceOpen = true; }}
   onRunQa={handleRunQa}
+  onExtractTerms={() => (isTermExtractionOpen = true)}
+  onOpenInvoice={() => (isQuoteInvoiceOpen = true)}
   onSplit={() => { if ($selectedSegment) openSplitModal($selectedSegment.id); }}
   onCopySource={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, $selectedSegment.source_text); }}
   onClearTarget={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, ''); }}
+/>
+
+<TermExtractionModal
+  isOpen={isTermExtractionOpen}
+  onClose={() => (isTermExtractionOpen = false)}
+  documentText={documentText}
+/>
+
+<QuoteInvoiceModal
+  isOpen={isQuoteInvoiceOpen}
+  onClose={() => (isQuoteInvoiceOpen = false)}
+  projectId={$currentProject?.id || ''}
+  fileIds={$currentFile?.id ? [$currentFile.id] : []}
 />
 
 <!-- Split Segment Modal -->

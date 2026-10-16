@@ -19,6 +19,7 @@
   export let onCopySource: () => void = () => {};
   export let onClearTarget: () => void = () => {};
   export let onOpenInvoice: () => void = () => {};
+  export let onExtractTerms: () => void = () => {};
 
   let searchQuery = '';
   let activeIndex = 0;
@@ -97,6 +98,14 @@
       shortcut: 'F7',
       icon: '✓',
       action: () => { onRunQa(); close(); }
+    },
+    {
+      id: 'extract-terms',
+      title: 'Automated Terminology Extraction (ATE)',
+      category: 'Linguistics',
+      shortcut: 'Ctrl+Shift+T',
+      icon: '⚡',
+      action: () => { onExtractTerms(); close(); }
     },
     {
       id: 'open-aligner',

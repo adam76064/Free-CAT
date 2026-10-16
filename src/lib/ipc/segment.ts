@@ -44,3 +44,23 @@ export async function toggleBookmark(segment_id: string): Promise<boolean> {
   return invoke('toggle_bookmark', { segmentId: segment_id });
 }
 
+export async function updateSegmentComment(args: {
+  segment_id: string;
+  comment: string | null;
+}): Promise<void> {
+  return invoke('update_segment_comment', { args });
+}
+
+export interface SegmentHistoryRecord {
+  id?: number;
+  segment_id: string;
+  target_text: string;
+  action: string;
+  actor?: string | null;
+  timestamp: string;
+}
+
+export async function getSegmentHistory(segment_id: string): Promise<SegmentHistoryRecord[]> {
+  return invoke('get_segment_history', { segmentId: segment_id });
+}
+

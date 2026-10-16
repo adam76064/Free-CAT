@@ -2,19 +2,21 @@
   /**
    * SegmentRow — A single bilingual source|target row in the editor grid.
    * Source cell: read-only with tag highlighting.
-   * Target cell: contenteditable with shortcuts and auto-focus.
+   * Target cell: contenteditable with predictive AutoSuggest and shortcuts.
    * Row actions: Split, Merge Next/Prev, Copy Source, Clear, Bookmark.
    */
   import { afterUpdate } from 'svelte';
   import type { Segment } from '$lib/stores/segments';
   import { STATUS_COLORS, STATUS_LABELS } from '$lib/stores/segments';
   import TmMatchBadge from '$lib/components/tm/TmMatchBadge.svelte';
+  import AutoSuggestPopup from './AutoSuggestPopup.svelte';
+  import type { SuggestionItem } from '$lib/utils/suggestTrie';
 
   export let segment: Segment;
   export let isSelected: boolean;
-  export let index: number = 0;
   export let canMergePrev: boolean = false;
   export let canMergeNext: boolean = false;
+  export let activeSuggestions: SuggestionItem[] = [];
   export let onSelect: () => void;
   export let onConfirm: (seg: Segment) => void;
   export let onTargetChange: (id: string, text: string) => void;
@@ -22,8 +24,11 @@
   export let onMergeNext: (segId: string) => void;
   export let onMergePrev: (segId: string) => void;
   export let onToggleBookmark: (segId: string) => void;
+  export let onQuerySuggestions: (word: string) => void = () => {};
 
   let targetEl: HTMLDivElement;
+  let suggestVisible = false;
+  let activeSuggestIndex = 0;
 
   // Sync contenteditable when target_text changes from outside (e.g. TM apply)
   afterUpdate(() => {
@@ -47,9 +52,49 @@
     sel?.addRange(range);
   }
 
+  function getCurrentWordAtCaret(): string {
+    const sel = window.getSelection();
+    if (!sel || !sel.focusNode) return '';
+    const textBeforeCaret = sel.focusNode.textContent?.slice(0, sel.focusOffset) || '';
+    const match = textBeforeCaret.match(/[\p{L}\p{N}_-]+$/u);
+    return match ? match[0] : '';
+  }
+
   function handleInput(e: Event) {
     const text = (e.target as HTMLDivElement).textContent ?? '';
     onTargetChange(segment.id, text);
+
+    const currentWord = getCurrentWordAtCaret();
+    if (currentWord.length >= 2) {
+      onQuerySuggestions(currentWord);
+      suggestVisible = true;
+      activeSuggestIndex = 0;
+    } else {
+      suggestVisible = false;
+    }
+  }
+
+  function handleApplySuggestion(item: SuggestionItem) {
+    const currentWord = getCurrentWordAtCaret();
+    const currentFullText = targetEl?.textContent ?? '';
+    let newText = currentFullText;
+
+    if (currentWord) {
+      // Replace the trailing word prefix with the full suggestion
+      const lastIndex = currentFullText.lastIndexOf(currentWord);
+      if (lastIndex !== -1) {
+        newText = currentFullText.slice(0, lastIndex) + item.text + ' ';
+      } else {
+        newText = currentFullText + ' ' + item.text;
+      }
+    } else {
+      newText = currentFullText ? `${currentFullText} ${item.text}` : item.text;
+    }
+
+    onTargetChange(segment.id, newText);
+    if (targetEl) targetEl.textContent = newText;
+    suggestVisible = false;
+    setTimeout(() => moveCursorToEnd(), 20);
   }
 
   function handleCopySource() {
@@ -63,9 +108,37 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    // Ctrl+Enter or Tab: Confirm and advance
+    // If suggestions are visible and Tab is pressed: accept top suggestion
+    if (suggestVisible && activeSuggestions.length > 0 && e.key === 'Tab') {
+      e.preventDefault();
+      handleApplySuggestion(activeSuggestions[activeSuggestIndex]);
+      return;
+    }
+
+    if (suggestVisible && activeSuggestions.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      if (e.key === 'ArrowDown') {
+        activeSuggestIndex = (activeSuggestIndex + 1) % activeSuggestions.length;
+      } else {
+        activeSuggestIndex = (activeSuggestIndex - 1 + activeSuggestions.length) % activeSuggestions.length;
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (suggestVisible) {
+        e.preventDefault();
+        suggestVisible = false;
+        return;
+      }
+      (e.target as HTMLElement).blur();
+      return;
+    }
+
+    // Ctrl+Enter or Tab (when no suggestions popup): Confirm and advance
     if (e.key === 'Tab' || (e.key === 'Enter' && (e.ctrlKey || !e.shiftKey))) {
       e.preventDefault();
+      suggestVisible = false;
       onConfirm({ ...segment, target_text: targetEl?.textContent ?? '' });
       return;
     }
@@ -104,10 +177,6 @@
       onSplit(segment.id);
       return;
     }
-
-    if (e.key === 'Escape') {
-      (e.target as HTMLElement).blur();
-    }
   }
 
   /** Render source text with {1}, {2} tag placeholders highlighted */
@@ -127,7 +196,7 @@
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
   class="grid grid-cols-[2.5rem_1fr_1fr] min-h-[3rem] border-b border-gray-100 dark:border-gray-800
-         transition-colors cursor-pointer {rowBg}"
+         transition-colors cursor-pointer relative {rowBg}"
   on:click={onSelect}
   role="row"
   tabindex="-1"
@@ -140,6 +209,9 @@
     </span>
     {#if segment.match_percent !== null && segment.match_percent !== undefined}
       <TmMatchBadge pct={segment.match_percent} />
+    {/if}
+    {#if segment.comment}
+      <span class="text-xs text-blue-500" title="Has comment: {segment.comment}">💬</span>
     {/if}
     <button
       on:click|stopPropagation={() => onToggleBookmark(segment.id)}
@@ -163,23 +235,33 @@
 
   <!-- Target (editable) -->
   <!-- svelte-ignore a11y-interactive-supports-focus -->
-  <div
-    bind:this={targetEl}
-    contenteditable="true"
-    tabindex="0"
-    on:input={handleInput}
-    on:keydown={handleKeydown}
-    on:focus={onSelect}
-    class="py-2 px-3 text-sm editor-text outline-none min-h-[3rem] leading-relaxed
-           text-gray-900 dark:text-white caret-brand-500
-           {isSelected ? '' : 'text-gray-600 dark:text-gray-300'}"
-    dir="auto"
-    spellcheck="true"
-    data-gramm="false"
-    role="textbox"
-    aria-multiline="true"
-    aria-label="Translation target for segment {segment.seq_number}"
-  ></div>
+  <div class="relative">
+    {#if isSelected}
+      <AutoSuggestPopup
+        visible={suggestVisible}
+        suggestions={activeSuggestions}
+        selectedIndex={activeSuggestIndex}
+        onSelect={handleApplySuggestion}
+      />
+    {/if}
+    <div
+      bind:this={targetEl}
+      contenteditable="true"
+      tabindex="0"
+      on:input={handleInput}
+      on:keydown={handleKeydown}
+      on:focus={onSelect}
+      class="py-2 px-3 text-sm editor-text outline-none min-h-[3rem] leading-relaxed
+             text-gray-900 dark:text-white caret-brand-500
+             {isSelected ? '' : 'text-gray-600 dark:text-gray-300'}"
+      dir="auto"
+      spellcheck="true"
+      data-gramm="false"
+      role="textbox"
+      aria-multiline="true"
+      aria-label="Translation target for segment {segment.seq_number}"
+    ></div>
+  </div>
 </div>
 
 <!-- Status & Action Bar (when selected) -->
@@ -205,7 +287,7 @@
         on:click={handleCopySource}
         class="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
                text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="Copy source into target (Ctrl+Ins)"
+        title="Copy source into target (Alt+Ins)"
       >
         📋 Copy Source
       </button>

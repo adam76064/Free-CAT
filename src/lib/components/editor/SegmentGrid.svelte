@@ -21,6 +21,9 @@
   import TbPanel from '$lib/components/panels/TbPanel.svelte';
   import QaPanel from '$lib/components/panels/QaPanel.svelte';
   import AiPanel from '$lib/components/panels/AiPanel.svelte';
+  import CommentsPanel from '$lib/components/panels/CommentsPanel.svelte';
+  import CommandPalette from './CommandPalette.svelte';
+  import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
   import { queryTb } from '$lib/ipc/termbase';
   import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark } from '$lib/ipc/segment';
@@ -30,8 +33,42 @@
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
   let gridContainer: HTMLDivElement;
-  let activeTab: 'tm' | 'tb' | 'qa' | 'ai' = 'tm';
+  let activeTab: 'tm' | 'tb' | 'qa' | 'ai' | 'comments' = 'tm';
+  let isInspectorOpen = true;
+  let isCommandPaletteOpen = false;
   let pretranslating = false;
+
+  // In-memory Trie for AutoSuggest
+  const suggestTrie = new SuggestionTrie();
+  let activeSuggestions: SuggestionItem[] = [];
+
+  $: {
+    suggestTrie.clear();
+    for (const m of $termMatches) {
+      suggestTrie.insert(m.target_term, {
+        text: m.target_term,
+        source: 'termbase',
+        matchScore: 100,
+        displayText: `${m.source_term} → ${m.target_term}`
+      });
+    }
+    for (const tm of $tmMatches) {
+      if (tm.target_text) {
+        const words = tm.target_text.split(/\s+/).filter(w => w.length > 2);
+        for (const w of words) {
+          suggestTrie.insert(w, {
+            text: w,
+            source: 'tm',
+            matchScore: tm.similarity,
+          });
+        }
+      }
+    }
+  }
+
+  function handleQuerySuggestions(word: string) {
+    activeSuggestions = suggestTrie.searchPrefix(word, 5);
+  }
 
   // Find & Replace state
   let isFindOpen = false;
@@ -41,16 +78,22 @@
   let segmentToSplit: Segment | null = null;
   let splitSliderPos = 1;
 
-  // Global keyboard shortcuts (Ctrl+F, Ctrl+H)
+  // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K)
   function handleWindowKeydown(e: KeyboardEvent) {
-    if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       isFindOpen = true;
       isReplaceOpen = false;
-    } else if (e.ctrlKey && e.key.toLowerCase() === 'h') {
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
       e.preventDefault();
       isFindOpen = true;
       isReplaceOpen = true;
+    } else if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      e.preventDefault();
+      isInspectorOpen = !isInspectorOpen;
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      isCommandPaletteOpen = !isCommandPaletteOpen;
     }
   }
 
@@ -380,6 +423,28 @@
       {pretranslating ? '⚡ Pretranslating…' : '⚡ Pre-translate'}
     </button>
 
+    <!-- Actions / Command Palette button -->
+    <button
+      on:click={() => (isCommandPaletteOpen = true)}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5"
+      title="Omni Command Palette (Ctrl+K)"
+    >
+      <span>⚡ Actions</span>
+      <kbd class="text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 px-1 rounded border border-gray-200 dark:border-gray-700">Ctrl+K</kbd>
+    </button>
+
+    <!-- Toggle Inspector button -->
+    <button
+      on:click={() => (isInspectorOpen = !isInspectorOpen)}
+      class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
+             {isInspectorOpen ? 'bg-gray-100 dark:bg-gray-800 text-brand-600' : 'text-gray-700 dark:text-gray-300'}
+             hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
+      title="Toggle Right Inspector (Ctrl+\)"
+    >
+      <span>⮌ Inspector</span>
+    </button>
+
     <div class="ml-auto flex items-center gap-3">
       <!-- Progress bar -->
       <div class="flex items-center gap-1.5">
@@ -447,10 +512,11 @@
         {#each $filteredSegments as segment, i (segment.id)}
           <SegmentRow
             {segment}
-            index={i}
             isSelected={i === $selectedIndex}
             canMergePrev={i > 0}
             canMergeNext={i < $filteredSegments.length - 1}
+            activeSuggestions={activeSuggestions}
+            onQuerySuggestions={handleQuerySuggestions}
             onSelect={() => selectedIndex.set(i)}
             onConfirm={handleConfirm}
             onTargetChange={handleTargetChange}
@@ -464,76 +530,103 @@
     </div>
 
     <!-- Right panel with tabs -->
-    <div class="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950">
-      <!-- Tab headers -->
-      <div class="flex items-center border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-1 py-1 gap-1 shrink-0">
-        <button
-          on:click={() => (activeTab = 'tm')}
-          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors
-                 {activeTab === 'tm'
-                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
-                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-        >
-          🧠 TM / MT
-        </button>
-        <button
-          on:click={() => (activeTab = 'tb')}
-          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                 {activeTab === 'tb'
-                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
-                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-        >
-          <span>📖 Glossary</span>
-          {#if $termMatches.length > 0}
-            <span class="w-4 h-4 rounded-full bg-brand-500 text-white text-[10px] flex items-center justify-center">
-              {$termMatches.length}
-            </span>
-          {/if}
-        </button>
-        <button
-          on:click={() => (activeTab = 'qa')}
-          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                 {activeTab === 'qa'
-                   ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm'
-                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-        >
-          <span>✓ QA</span>
-          {#if $qaErrors.length > 0}
-            <span class="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
-              {$qaErrors.length}
-            </span>
-          {/if}
-        </button>
-        <button
-          on:click={() => (activeTab = 'ai')}
-          class="flex-1 py-1 px-2 text-xs font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                 {activeTab === 'ai'
-                   ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-sm'
-                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-        >
-          <span>✨ AI</span>
-        </button>
-      </div>
+    {#if isInspectorOpen}
+      <div class="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950">
+        <!-- Tab headers -->
+        <div class="flex items-center border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-1 py-1 gap-1 shrink-0 overflow-x-auto">
+          <button
+            on:click={() => (activeTab = 'tm')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors
+                   {activeTab === 'tm'
+                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            🧠 TM
+          </button>
+          <button
+            on:click={() => (activeTab = 'tb')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                   {activeTab === 'tb'
+                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>📖 Term</span>
+            {#if $termMatches.length > 0}
+              <span class="w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[9px] flex items-center justify-center">
+                {$termMatches.length}
+              </span>
+            {/if}
+          </button>
+          <button
+            on:click={() => (activeTab = 'qa')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                   {activeTab === 'qa'
+                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>✓ QA</span>
+            {#if $qaErrors.length > 0}
+              <span class="w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center">
+                {$qaErrors.length}
+              </span>
+            {/if}
+          </button>
+          <button
+            on:click={() => (activeTab = 'ai')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                   {activeTab === 'ai'
+                     ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>✨ AI</span>
+          </button>
+          <button
+            on:click={() => (activeTab = 'comments')}
+            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
+                   {activeTab === 'comments'
+                     ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+          >
+            <span>💬 Notes</span>
+            {#if $selectedSegment?.comment}
+              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            {/if}
+          </button>
+        </div>
 
-      <!-- Tab content -->
-      <div class="flex-1 overflow-hidden">
-        {#if activeTab === 'tm'}
-          <TmPanel onApply={applyTmMatch} />
-        {:else if activeTab === 'tb'}
-          <TbPanel onInsertTerm={handleInsertTerm} />
-        {:else if activeTab === 'qa'}
-          <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
-        {:else if activeTab === 'ai'}
-          <AiPanel onApplyTarget={(txt) => {
-            const seg = $selectedSegment;
-            if (seg) handleTargetChange(seg.id, txt);
-          }} />
-        {/if}
+        <!-- Tab content -->
+        <div class="flex-1 overflow-hidden">
+          {#if activeTab === 'tm'}
+            <TmPanel onApply={applyTmMatch} />
+          {:else if activeTab === 'tb'}
+            <TbPanel onInsertTerm={handleInsertTerm} />
+          {:else if activeTab === 'qa'}
+            <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
+          {:else if activeTab === 'ai'}
+            <AiPanel onApplyTarget={(txt) => {
+              const seg = $selectedSegment;
+              if (seg) handleTargetChange(seg.id, txt);
+            }} />
+          {:else if activeTab === 'comments'}
+            <CommentsPanel />
+          {/if}
+        </div>
       </div>
-    </div>
+    {/if}
 
   </div>
 </div>
+
+<CommandPalette
+  isOpen={isCommandPaletteOpen}
+  onToggleInspector={() => (isInspectorOpen = !isInspectorOpen)}
+  onOpenFind={() => { isFindOpen = true; isReplaceOpen = false; }}
+  onOpenReplace={() => { isFindOpen = true; isReplaceOpen = true; }}
+  onRunQa={handleRunQa}
+  onSplit={() => { if ($selectedSegment) openSplitModal($selectedSegment.id); }}
+  onCopySource={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, $selectedSegment.source_text); }}
+  onClearTarget={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, ''); }}
+/>
 
 <!-- Split Segment Modal -->
 {#if segmentToSplit}

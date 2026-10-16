@@ -14,6 +14,10 @@ pub mod docx;
 pub mod html;
 pub mod markdown;
 pub mod srt;
+pub mod json;
+pub mod yaml;
+pub mod xlsx;
+pub mod pptx;
 
 /// Raw segment data returned by any parser.
 #[derive(Debug, Clone)]
@@ -57,12 +61,19 @@ pub fn parse_file(path: &Path, format: &str) -> Result<Vec<RawSegment>> {
         "html" | "htm"                   => html::parse(path),
         "md"                             => markdown::parse(path),
         "srt" | "vtt"                    => srt::parse(path),
+        "json"                           => json::parse(path),
+        "yaml" | "yml"                   => yaml::parse(path),
+        "xlsx"                           => xlsx::parse(path),
+        "pptx"                           => pptx::parse(path),
         _ => Err(anyhow!("No parser for format: {}", format)),
     }
 }
 
 /// Export translated segments back to a file.
 pub fn export_file(file: &ProjectFile, segments: &[Segment], out_path: &str) -> Result<()> {
+    let out = Path::new(out_path);
+    let src = Path::new(&file.source_path);
+
     match file.format.as_str() {
         "txt"                            => txt::export(segments, out_path),
         "po" | "pot"                     => po::export(segments, out_path),
@@ -71,6 +82,10 @@ pub fn export_file(file: &ProjectFile, segments: &[Segment], out_path: &str) -> 
         "html" | "htm"                   => html::export(segments, &file.source_path, out_path),
         "md"                             => markdown::export(segments, &file.source_path, out_path),
         "srt" | "vtt"                    => srt::export(segments, &file.source_path, out_path),
+        "json"                           => json::export(src, segments, out),
+        "yaml" | "yml"                   => yaml::export(src, segments, out),
+        "xlsx"                           => xlsx::export(src, segments, out),
+        "pptx"                           => pptx::export(src, segments, out),
         _ => {
             log::warn!("Export not yet implemented for format: {}", file.format);
             Err(anyhow!("Export for '{}' not yet implemented", file.format))

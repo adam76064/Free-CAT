@@ -79,7 +79,7 @@ fn apply_rules(text: &str, rules: &[SegmentRule]) -> Vec<String> {
 }
 
 fn is_potential_break(c: char) -> bool {
-    matches!(c, '.' | '?' | '!' | '…' | '。' | '？' | '！' | '।' | '۔')
+    matches!(c, '.' | '?' | '!' | '…' | '。' | '？' | '！' | '।' | '۔' | '؟')
 }
 
 /// Get segmentation rules for a given language code.
@@ -118,16 +118,16 @@ fn get_rules(_lang: &str) -> Vec<SegmentRule> {
 
     // ── BREAK rules ────────────────────────────────────────────────────────────
 
-    // Period followed by whitespace + uppercase → break
+    // Period followed by whitespace + (Uppercase letter OR uncased scripts like Arabic, Hebrew, Asian) → break
     rules.push(SegmentRule {
         before_break: Regex::new(r"\.$").unwrap(),
-        after_break:  Regex::new(r"^\s+[A-Z\u00C0-\u00D6\u00D8-\u00F6]").unwrap(),
+        after_break:  Regex::new(r"^\s+([A-Z\u00C0-\u00D6\u00D8-\u00DE]|[\p{Arabic}\p{Hebrew}\p{Devanagari}\p{Han}\p{Hiragana}\p{Katakana}])").unwrap(),
         is_break:     true,
     });
 
-    // Question mark / exclamation mark always break
+    // Question mark (Western ? and Arabic ؟) / exclamation mark always break
     rules.push(SegmentRule {
-        before_break: Regex::new(r"[?!]\s*$").unwrap(),
+        before_break: Regex::new(r"[?!؟]\s*$").unwrap(),
         after_break:  Regex::new(r".*").unwrap(),
         is_break:     true,
     });

@@ -163,6 +163,7 @@ impl TmDb {
                         tm_name:      self.name.clone(),
                         is_exact:     adjusted >= 1.0,
                         is_context:   false, // set by context check layer
+                        repaired_target: None,
                     })
                 } else {
                     None

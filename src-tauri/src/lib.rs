@@ -59,6 +59,8 @@ pub fn run() {
             commands::segment::split_segment,
             commands::segment::merge_segments,
             commands::segment::toggle_bookmark,
+            commands::segment::update_segment_comment,
+            commands::segment::get_segment_history,
             // TM commands
             commands::tm::query_tm,
             commands::tm::add_to_tm,
@@ -91,8 +93,14 @@ pub fn run() {
             commands::file_io::import_file,
             commands::file_io::export_file,
             commands::file_io::import_sdlppx,
+            commands::file_io::export_sdlrpx,
             // AI assistant commands
             commands::ai::query_ai_assistant,
+            // Aligner commands
+            commands::aligner::align_texts,
+            commands::aligner::align_files,
+            commands::aligner::export_alignment_tmx,
+            commands::aligner::import_alignment_to_tm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Free-CAT");

@@ -6,4 +6,6 @@ pub mod qa;
 pub mod parsers;
 pub mod segmentation;
 pub mod ai;
+pub mod aligner;
+pub mod packages;
 

@@ -162,6 +162,7 @@ pub struct TmMatchResult {
     pub tm_name:     String,
     pub is_exact:    bool,    // score_pct == 100
     pub is_context:  bool,    // 101% or 102% context match
+    pub repaired_target: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

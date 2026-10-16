@@ -481,6 +481,30 @@ impl ProjectDb {
         Ok(new_state != 0)
     }
 
+    pub fn update_segment_comment(&self, segment_id: &str, comment: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE segments SET comment = ?1 WHERE id = ?2",
+            params![comment, segment_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_history_for_segment(&self, segment_id: &str) -> Result<Vec<SegmentHistory>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, segment_id, target_text, action, actor, timestamp
+             FROM segment_history WHERE segment_id = ?1 ORDER BY timestamp DESC"
+        )?;
+        let rows = stmt.query_map(params![segment_id], |row| Ok(SegmentHistory {
+            id:          row.get(0)?,
+            segment_id:  row.get(1)?,
+            target_text: row.get(2)?,
+            action:      row.get(3)?,
+            actor:       row.get(4)?,
+            timestamp:   row.get(5)?,
+        }))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn insert_history(&self, h: &SegmentHistory) -> Result<()> {
         self.conn.execute(
             "INSERT INTO segment_history (segment_id, target_text, action, actor, timestamp)

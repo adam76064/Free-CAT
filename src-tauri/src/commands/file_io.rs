@@ -126,11 +126,86 @@ pub async fn export_file(
 /// Import a Trados .sdlppx package.
 #[tauri::command]
 pub async fn import_sdlppx(
-    _project_id: String,
-    _package_path: String,
-    _state: State<'_, AppState>,
+    project_id: String,
+    package_path: String,
+    state: State<'_, AppState>,
 ) -> Result<Vec<ImportResult>, String> {
-    // TODO: Phase 2 - extract .sdlxliff files from ZIP, import each
-    log::warn!("SDLPPX import not yet implemented (Phase 2 feature)");
-    Err("SDLPPX import will be implemented in v1.0".into())
+    let pkg_path = std::path::Path::new(&package_path);
+    if !pkg_path.exists() {
+        return Err(format!("SDLPPX package not found: {}", package_path));
+    }
+
+    let extract_dir = state.data_dir
+        .join("projects")
+        .join(&project_id)
+        .join("sdlppx_unpacked");
+
+    let pkg_info = crate::core::packages::trados::unpack_sdlppx(pkg_path, &extract_dir)
+        .map_err(|e| format!("Failed to unpack SDLPPX: {}", e))?;
+
+    let mut results = Vec::new();
+
+    // Import each extracted .sdlxliff file into the project
+    for sdlxliff_path in pkg_info.sdlxliff_files {
+        let import_args = ImportFileArgs {
+            project_id: project_id.clone(),
+            file_path: sdlxliff_path.to_string_lossy().to_string(),
+        };
+        match import_file(import_args, state.clone()).await {
+            Ok(res) => results.push(res),
+            Err(e) => log::warn!("Failed to import {}: {}", sdlxliff_path.display(), e),
+        }
+    }
+
+    log::info!(
+        "Imported Trados package '{}' with {} files",
+        pkg_info.project_name,
+        results.len()
+    );
+
+    Ok(results)
+}
+
+/// Generate a Trados return package (.sdlrpx) containing all translated .sdlxliff files.
+#[tauri::command]
+pub async fn export_sdlrpx(
+    project_id: String,
+    out_path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let db = state.project_db.lock().unwrap();
+    let files = db.get_files_for_project(&project_id)
+        .map_err(|e| e.to_string())?;
+
+    let sdlxliff_files: Vec<_> = files.into_iter()
+        .filter(|f| f.filename.ends_with(".sdlxliff") || f.format == "sdlxliff")
+        .collect();
+
+    if sdlxliff_files.is_empty() {
+        return Err("No .sdlxliff files found in this project to create return package.".into());
+    }
+
+    let export_dir = state.data_dir.join("projects").join(&project_id).join("translated");
+    std::fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
+
+    let mut rel_paths = Vec::new();
+    for f in &sdlxliff_files {
+        let segments = db.get_segments_for_file(&f.id).map_err(|e| e.to_string())?;
+        let target_file_path = export_dir.join(&f.filename);
+        crate::core::parsers::export_file(f, &segments, &target_file_path.to_string_lossy())
+            .map_err(|e| format!("Failed to export {}: {}", f.filename, e))?;
+        rel_paths.push(std::path::PathBuf::from(&f.filename));
+    }
+
+    let return_pkg_path = out_path.map(std::path::PathBuf::from).unwrap_or_else(|| {
+        state.data_dir
+            .join("projects")
+            .join(&project_id)
+            .join(format!("return_package_{}.sdlrpx", chrono::Utc::now().format("%Y%m%d_%H%M%S")))
+    });
+
+    crate::core::packages::trados::create_sdlrpx_package(&export_dir, &rel_paths, &return_pkg_path)
+        .map_err(|e| format!("Failed to build .sdlrpx: {}", e))?;
+
+    Ok(return_pkg_path.to_string_lossy().to_string())
 }

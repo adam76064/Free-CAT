@@ -83,3 +83,24 @@ export async function preTranslate(args: {
   return invoke('pre_translate', { args });
 }
 
+export async function importSdlppx(args: {
+  project_id: string;
+  package_path: string;
+}): Promise<{ file: ProjectFile; segments: any[] }[]> {
+  return invoke('import_sdlppx', {
+    projectId: args.project_id,
+    packagePath: args.package_path,
+  });
+}
+
+export async function exportSdlrpx(args: {
+  project_id: string;
+  out_path?: string;
+}): Promise<string> {
+  return invoke('export_sdlrpx', {
+    projectId: args.project_id,
+    outPath: args.out_path ?? null,
+  });
+}
+
+

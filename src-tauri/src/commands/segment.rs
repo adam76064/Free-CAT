@@ -159,3 +159,29 @@ pub async fn confirm_segment(
     log::debug!("Confirmed segment: {}", args.segment_id);
     Ok(propagated)
 }
+
+#[derive(serde::Deserialize)]
+pub struct UpdateCommentArgs {
+    pub segment_id: String,
+    pub comment: Option<String>,
+}
+
+#[tauri::command]
+pub async fn update_segment_comment(
+    args: UpdateCommentArgs,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.project_db.lock().unwrap();
+    db.update_segment_comment(&args.segment_id, args.comment.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_segment_history(
+    segment_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<SegmentHistory>, String> {
+    let db = state.project_db.lock().unwrap();
+    db.get_history_for_segment(&segment_id)
+        .map_err(|e| e.to_string())
+}

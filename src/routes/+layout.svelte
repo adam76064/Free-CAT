@@ -43,6 +43,12 @@
               {pathname.startsWith('/tb') ? 'bg-brand-500/20 text-brand-400' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}"
        title="Termbase">📖</a>
 
+    <!-- Aligner -->
+    <a href="/aligner"
+       class="w-9 h-9 rounded-lg flex items-center justify-center text-lg transition-colors
+              {pathname.startsWith('/aligner') ? 'bg-brand-500/20 text-brand-400' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}"
+       title="Visual Bilingual Aligner">📐</a>
+
     <!-- Spacer -->
     <div class="flex-1"></div>
 

@@ -5,7 +5,7 @@
   import { page } from '$app/stores';
   import { open } from '@tauri-apps/plugin-dialog';
   import { currentProject, currentFiles, projectSettings, parseSettings } from '$lib/stores/project';
-  import { openProject, importFile, exportFile, analyzeProject } from '$lib/ipc/project';
+  import { openProject, importFile, exportFile, analyzeProject, importSdlppx, exportSdlrpx } from '$lib/ipc/project';
   import { availableTms } from '$lib/stores/tm';
   import { listTms } from '$lib/ipc/tm';
 
@@ -13,6 +13,7 @@
 
   let loading = true;
   let importing = false;
+  let exportingSdlrpx = false;
   let analysis: any = null;
   let error = '';
   let showAnalysisModal = false;
@@ -45,13 +46,17 @@
   async function handleImportFile() {
     if (!$currentProject) return;
     const filePath = await open({
-      title: 'Import Source File',
+      title: 'Import Source File or Trados Package',
       filters: [
         {
           name: 'All Supported Formats',
-          extensions: ['txt', 'po', 'pot', 'xliff', 'xlf', 'sdlxliff', 'docx', 'html', 'htm', 'md', 'markdown', 'srt', 'vtt']
+          extensions: ['txt', 'po', 'pot', 'xliff', 'xlf', 'sdlxliff', 'sdlppx', 'docx', 'xlsx', 'pptx', 'json', 'yaml', 'yml', 'html', 'htm', 'md', 'markdown', 'srt', 'vtt']
         },
+        { name: 'Trados Studio Package (*.sdlppx)', extensions: ['sdlppx'] },
         { name: 'Word Documents (*.docx)', extensions: ['docx'] },
+        { name: 'Excel Spreadsheets (*.xlsx)', extensions: ['xlsx'] },
+        { name: 'PowerPoint Presentations (*.pptx)', extensions: ['pptx'] },
+        { name: 'JSON / YAML Localization (*.json, *.yaml, *.yml)', extensions: ['json', 'yaml', 'yml'] },
         { name: 'HTML Documents (*.html, *.htm)', extensions: ['html', 'htm'] },
         { name: 'Markdown (*.md, *.markdown)', extensions: ['md', 'markdown'] },
         { name: 'Subtitles (*.srt, *.vtt)', extensions: ['srt', 'vtt'] },
@@ -64,12 +69,21 @@
     if (!filePath || typeof filePath !== 'string') return;
 
     importing = true;
+    error = '';
     try {
-      const result = await importFile({
-        project_id: $currentProject.id,
-        file_path: filePath,
-      });
-      currentFiles.update((files) => [result.file, ...files]);
+      if (filePath.toLowerCase().endsWith('.sdlppx')) {
+        const results = await importSdlppx({
+          project_id: $currentProject.id,
+          package_path: filePath,
+        });
+        currentFiles.update((files) => [...results.map(r => r.file), ...files]);
+      } else {
+        const result = await importFile({
+          project_id: $currentProject.id,
+          file_path: filePath,
+        });
+        currentFiles.update((files) => [result.file, ...files]);
+      }
 
       analysis = await analyzeProject({
         project_id: $currentProject.id,
@@ -79,6 +93,20 @@
       error = `Import failed: ${e}`;
     } finally {
       importing = false;
+    }
+  }
+
+  async function handleExportSdlrpx() {
+    if (!$currentProject) return;
+    exportingSdlrpx = true;
+    error = '';
+    try {
+      const outPath = await exportSdlrpx({ project_id: $currentProject.id });
+      alert(`Exported Trados return package to: ${outPath}`);
+    } catch (e: any) {
+      error = `Return package export failed: ${e}`;
+    } finally {
+      exportingSdlrpx = false;
     }
   }
 
@@ -92,6 +120,7 @@
 
   const FILE_ICONS: Record<string, string> = {
     txt: '📄', po: '🌐', pot: '🌐', docx: '📝',
+    xlsx: '📊', pptx: '📽', json: '⚙️', yaml: '⚙️', yml: '⚙️',
     html: '🌐', htm: '🌐', md: '📑', markdown: '📑',
     srt: '🎬', vtt: '🎬',
     xliff: '🔧', xlf: '🔧', sdlxliff: '🔧', mqxliff: '🔧',
@@ -150,6 +179,17 @@
                        text-sm font-medium rounded-lg transition-colors shadow-xs"
               >
                 📊 Analysis Report
+              </button>
+            {/if}
+            {#if $currentFiles.some(f => f.filename.endsWith('.sdlxliff') || f.format === 'sdlxliff')}
+              <button
+                on:click={handleExportSdlrpx}
+                disabled={exportingSdlrpx}
+                class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50
+                       text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+                title="Create a Trados return package (.sdlrpx) for delivery"
+              >
+                <span>{exportingSdlrpx ? 'Packing…' : '📦 Return Package (.sdlrpx)'}</span>
               </button>
             {/if}
             <button

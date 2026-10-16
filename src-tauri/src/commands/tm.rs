@@ -55,11 +55,25 @@ pub async fn query_tm(
     // Sort descending by score, deduplicate by target
     all_results.sort_by(|a, b| b.score_pct.cmp(&a.score_pct));
     let mut seen = std::collections::HashSet::new();
-    let results: Vec<TmMatchResult> = all_results
+    let mut results: Vec<TmMatchResult> = all_results
         .into_iter()
         .filter(|m| seen.insert(m.target_text.clone()))
         .take(5)
         .collect();
+
+    // Run Fuzzy Match Repair (FMR) on fuzzy matches
+    for m in &mut results {
+        if m.score_pct >= 70 && m.score_pct < 100 {
+            if let Some(fmr) = crate::core::tm::fmr::repair_fuzzy_match(
+                &args.source_text,
+                &m.source_text,
+                &m.target_text,
+                &[],
+            ) {
+                m.repaired_target = Some(fmr.repaired_target);
+            }
+        }
+    }
 
     Ok(results)
 }

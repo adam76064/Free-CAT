@@ -10,6 +10,10 @@ pub mod txt;
 pub mod po;
 pub mod xliff;
 pub mod tbx;
+pub mod docx;
+pub mod html;
+pub mod markdown;
+pub mod srt;
 
 /// Raw segment data returned by any parser.
 #[derive(Debug, Clone)]
@@ -49,14 +53,10 @@ pub fn parse_file(path: &Path, format: &str) -> Result<Vec<RawSegment>> {
         "txt"                            => txt::parse(path),
         "po" | "pot"                     => po::parse(path),
         "xliff" | "sdlxliff" | "mqxliff" => xliff::parse(path),
-        "docx"            => {
-            // Placeholder for DOCX until zip/xml parser is hooked
-            log::warn!("DOCX parser stub — returning placeholder");
-            Ok(vec![RawSegment {
-                source_text: "DOCX parser will extract paragraphs in Phase 2".into(),
-                target_text: None, notes: None, context: None,
-            }])
-        }
+        "docx"                           => docx::parse(path),
+        "html" | "htm"                   => html::parse(path),
+        "md"                             => markdown::parse(path),
+        "srt" | "vtt"                    => srt::parse(path),
         _ => Err(anyhow!("No parser for format: {}", format)),
     }
 }
@@ -67,6 +67,10 @@ pub fn export_file(file: &ProjectFile, segments: &[Segment], out_path: &str) -> 
         "txt"                            => txt::export(segments, out_path),
         "po" | "pot"                     => po::export(segments, out_path),
         "xliff" | "sdlxliff" | "mqxliff" => xliff::export(segments, &file.source_path, out_path, "source", "target"),
+        "docx"                           => docx::export(segments, &file.source_path, out_path),
+        "html" | "htm"                   => html::export(segments, &file.source_path, out_path),
+        "md"                             => markdown::export(segments, &file.source_path, out_path),
+        "srt" | "vtt"                    => srt::export(segments, &file.source_path, out_path),
         _ => {
             log::warn!("Export not yet implemented for format: {}", file.format);
             Err(anyhow!("Export for '{}' not yet implemented", file.format))

@@ -2,6 +2,7 @@
 // Svelte stores for segment data and editor navigation state.
 
 import { writable, derived } from 'svelte/store';
+import { qaResults } from './qa';
 
 export type SegmentStatus = 'new' | 'draft' | 'translated' | 'needs_review' | 'reviewed' | 'final';
 
@@ -22,7 +23,7 @@ export interface Segment {
   modified_by: string | null;
 }
 
-export type FilterMode = 'all' | 'new' | 'draft' | 'translated' | 'needs_review' | 'reviewed' | 'bookmarked';
+export type FilterMode = 'all' | 'new' | 'draft' | 'translated' | 'needs_review' | 'reviewed' | 'bookmarked' | 'qa_warning';
 
 // All segments for the current file
 export const segments = writable<Segment[]>([]);
@@ -38,13 +39,16 @@ export const segmentSearch = writable<string>('');
 
 // Derived: filtered segments based on filterMode and search
 export const filteredSegments = derived(
-  [segments, filterMode, segmentSearch],
-  ([$segments, $filter, $search]) => {
+  [segments, filterMode, segmentSearch, qaResults],
+  ([$segments, $filter, $search, $qa]) => {
     let result = $segments;
 
     if ($filter !== 'all') {
       if ($filter === 'bookmarked') {
         result = result.filter(s => s.bookmarked);
+      } else if ($filter === 'qa_warning') {
+        const qaSegIds = new Set($qa.map(q => q.segment_id).filter(Boolean));
+        result = result.filter(s => qaSegIds.has(s.id));
       } else {
         result = result.filter(s => s.status === $filter);
       }

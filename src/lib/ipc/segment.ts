@@ -25,3 +25,22 @@ export async function confirmSegment(args: {
 }): Promise<number> {
   return invoke('confirm_segment', { args });
 }
+
+export async function splitSegment(args: {
+  segment_id: string;
+  split_index: number;
+}): Promise<Segment[]> {
+  return invoke('split_segment', { args });
+}
+
+export async function mergeSegments(args: {
+  segment_id_1: string;
+  segment_id_2: string;
+}): Promise<Segment> {
+  return invoke('merge_segments', { args });
+}
+
+export async function toggleBookmark(segment_id: string): Promise<boolean> {
+  return invoke('toggle_bookmark', { segmentId: segment_id });
+}
+

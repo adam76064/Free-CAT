@@ -28,6 +28,7 @@ pub fn run_all_checks(
     if let Some(i) = check_repeated_words(segment)      { issues.push(i); }
     if let Some(i) = check_untranslated(segment)        { issues.push(i); }
     if let Some(i) = check_segment_length(segment, max_length) { issues.push(i); }
+    if let Some(i) = check_punctuation(segment)        { issues.push(i); }
     issues.extend(check_forbidden_terms(segment, forbidden_terms));
 
     issues
@@ -184,6 +185,114 @@ fn check_forbidden_terms(seg: &Segment, forbidden: &[TermEntry]) -> Vec<QaIssue>
         .collect()
 }
 
+/// QA-10: Punctuation and bracket/quote parity
+fn check_punctuation(seg: &Segment) -> Option<QaIssue> {
+    let src = seg.source_text.trim();
+    let tgt = seg.target_text.trim();
+    if src.is_empty() || tgt.is_empty() {
+        return None;
+    }
+
+    // Check terminal punctuation
+    let last_src = src.chars().last().unwrap_or(' ');
+    let last_tgt = tgt.chars().last().unwrap_or(' ');
+
+    if (last_src == '?' && last_tgt != '?')
+        || (last_src == '!' && last_tgt != '!')
+        || (last_src == ':' && last_tgt != ':')
+    {
+        return Some(QaIssue {
+            check_name: "punctuation_mismatch".into(),
+            severity: "warning".into(),
+            message: format!(
+                "Punctuation mismatch: source ends with '{}', target ends with '{}'.",
+                last_src, last_tgt
+            ),
+        });
+    }
+
+    // Check bracket parity
+    let open_parens = tgt.chars().filter(|&c| c == '(').count();
+    let close_parens = tgt.chars().filter(|&c| c == ')').count();
+    if open_parens != close_parens {
+        return Some(QaIssue {
+            check_name: "bracket_mismatch".into(),
+            severity: "warning".into(),
+            message: "Unbalanced parentheses () in target.".into(),
+        });
+    }
+
+    let open_brackets = tgt.chars().filter(|&c| c == '[').count();
+    let close_brackets = tgt.chars().filter(|&c| c == ']').count();
+    if open_brackets != close_brackets {
+        return Some(QaIssue {
+            check_name: "bracket_mismatch".into(),
+            severity: "warning".into(),
+            message: "Unbalanced square brackets [] in target.".into(),
+        });
+    }
+
+    let quotes = tgt.chars().filter(|&c| c == '"').count();
+    if quotes % 2 != 0 {
+        return Some(QaIssue {
+            check_name: "quote_mismatch".into(),
+            severity: "warning".into(),
+            message: "Unbalanced double quotes \" in target.".into(),
+        });
+    }
+
+    None
+}
+
+/// QA-11: Cross-segment Consistency check across a set of segments.
+/// Flags segments where identical source text was translated inconsistently.
+pub fn check_cross_consistency(segments: &[Segment]) -> Vec<(String, QaIssue)> {
+    use std::collections::HashMap;
+
+    let mut issues = Vec::new();
+    let mut map: HashMap<String, Vec<(&str, i64, String, &str)>> = HashMap::new();
+
+    for seg in segments {
+        let src = seg.source_text.trim();
+        let tgt = seg.target_text.trim();
+        if src.is_empty() || tgt.is_empty() {
+            continue;
+        }
+        let src_norm = src.to_lowercase();
+        let tgt_norm = tgt.to_lowercase();
+        map.entry(src_norm).or_default().push((
+            &seg.id,
+            seg.seq_number,
+            tgt_norm,
+            tgt,
+        ));
+    }
+
+    for (_src, occurrences) in map {
+        if occurrences.len() > 1 {
+            let first_tgt_norm = &occurrences[0].2;
+            let has_discrepancy = occurrences.iter().any(|occ| &occ.2 != first_tgt_norm);
+            if has_discrepancy {
+                for occ in &occurrences {
+                    issues.push((
+                        occ.0.to_string(),
+                        QaIssue {
+                            check_name: "inconsistent_translation".into(),
+                            severity: "warning".into(),
+                            message: format!(
+                                "Inconsistent translation: identical source translated differently across segments (e.g. #{}: \"{}\").",
+                                occ.1, occ.3
+                            ),
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    issues
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Extract {N} style tag placeholders from text.
@@ -242,5 +351,37 @@ mod tests {
     fn double_space_warned() {
         let seg = make_seg("Hello", "Bonjour  monde");
         assert!(check_double_space(&seg).is_some());
+    }
+
+    #[test]
+    fn punctuation_mismatch_detected() {
+        let seg = make_seg("Are you ready?", "Vous êtes prêts.");
+        assert!(check_punctuation(&seg).is_some());
+
+        let seg_unbalanced = make_seg("Hello (world)", "Bonjour (monde");
+        assert!(check_punctuation(&seg_unbalanced).is_some());
+    }
+
+    #[test]
+    fn cross_consistency_detected() {
+        let seg1 = Segment {
+            id: "s1".into(), file_id: "f".into(), seq_number: 1,
+            source_text: "Cancel".into(), target_text: "Abbrechen".into(),
+            status: SegmentStatus::Translated, match_percent: None, match_origin: None,
+            locked: false, bookmarked: false, comment: None,
+            created_at: "2025-01-01".into(), modified_at: "2025-01-01".into(),
+            modified_by: None,
+        };
+        let seg2 = Segment {
+            id: "s2".into(), file_id: "f".into(), seq_number: 2,
+            source_text: "Cancel".into(), target_text: "Stornieren".into(),
+            status: SegmentStatus::Translated, match_percent: None, match_origin: None,
+            locked: false, bookmarked: false, comment: None,
+            created_at: "2025-01-01".into(), modified_at: "2025-01-01".into(),
+            modified_by: None,
+        };
+
+        let issues = check_cross_consistency(&[seg1, seg2]);
+        assert_eq!(issues.len(), 2);
     }
 }

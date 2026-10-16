@@ -22,11 +22,56 @@ pub async fn get_segments(
 /// Get a single segment by ID.
 #[tauri::command]
 pub async fn get_segment(
-    _segment_id: String,
-    _state: State<'_, AppState>,
+    segment_id: String,
+    state: State<'_, AppState>,
 ) -> Result<Option<Segment>, String> {
-    // Phase 2 will add get_segment_by_id to ProjectDb
-    Ok(None)
+    state.project_db
+        .lock().unwrap()
+        .get_segment_by_id(&segment_id)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
+pub struct SplitSegmentArgs {
+    pub segment_id: String,
+    pub split_index: usize,
+}
+
+#[tauri::command]
+pub async fn split_segment(
+    args: SplitSegmentArgs,
+    state: State<'_, AppState>,
+) -> Result<Vec<Segment>, String> {
+    let db = state.project_db.lock().unwrap();
+    let (seg1, seg2) = db.split_segment(&args.segment_id, args.split_index)
+        .map_err(|e| e.to_string())?;
+    Ok(vec![seg1, seg2])
+}
+
+#[derive(serde::Deserialize)]
+pub struct MergeSegmentsArgs {
+    pub segment_id_1: String,
+    pub segment_id_2: String,
+}
+
+#[tauri::command]
+pub async fn merge_segments(
+    args: MergeSegmentsArgs,
+    state: State<'_, AppState>,
+) -> Result<Segment, String> {
+    let db = state.project_db.lock().unwrap();
+    db.merge_segments(&args.segment_id_1, &args.segment_id_2)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toggle_bookmark(
+    segment_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let db = state.project_db.lock().unwrap();
+    db.toggle_bookmark(&segment_id)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Deserialize)]

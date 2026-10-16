@@ -5,3 +5,5 @@ pub mod tm;
 pub mod qa;
 pub mod parsers;
 pub mod segmentation;
+pub mod ai;
+

@@ -56,6 +56,9 @@ pub fn run() {
             commands::segment::update_segment,
             commands::segment::confirm_segment,
             commands::segment::get_segment,
+            commands::segment::split_segment,
+            commands::segment::merge_segments,
+            commands::segment::toggle_bookmark,
             // TM commands
             commands::tm::query_tm,
             commands::tm::add_to_tm,
@@ -88,6 +91,8 @@ pub fn run() {
             commands::file_io::import_file,
             commands::file_io::export_file,
             commands::file_io::import_sdlppx,
+            // AI assistant commands
+            commands::ai::query_ai_assistant,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Free-CAT");

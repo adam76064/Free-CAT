@@ -3,7 +3,7 @@
 // Uses rusqlite with FTS5 and WAL journal mode.
 
 use std::path::PathBuf;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use rusqlite::{Connection, params};
 use crate::core::models::{Project, ProjectFile, Segment, SegmentHistory, QaResult, SegmentStatus};
 
@@ -332,6 +332,153 @@ impl ProjectDb {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_segment_by_id(&self, id: &str) -> Result<Option<Segment>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_id, seq_number, source_text, target_text, status,
+                    match_percent, match_origin, locked, bookmarked, comment,
+                    created_at, modified_at, modified_by
+             FROM segments WHERE id = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            let status_str: String = row.get(5)?;
+            Ok(Segment {
+                id:            row.get(0)?,
+                file_id:       row.get(1)?,
+                seq_number:    row.get(2)?,
+                source_text:   row.get(3)?,
+                target_text:   row.get(4)?,
+                status:        SegmentStatus::from_str(&status_str),
+                match_percent: row.get(6)?,
+                match_origin:  row.get(7)?,
+                locked:        row.get::<_, i32>(8)? != 0,
+                bookmarked:    row.get::<_, i32>(9)? != 0,
+                comment:       row.get(10)?,
+                created_at:    row.get(11)?,
+                modified_at:   row.get(12)?,
+                modified_by:   row.get(13)?,
+            })
+        })?;
+        match rows.next() {
+            Some(res) => Ok(Some(res?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn split_segment(&self, segment_id: &str, split_index: usize) -> Result<(Segment, Segment)> {
+        let seg = self.get_segment_by_id(segment_id)?
+            .ok_or_else(|| anyhow!("Segment not found: {}", segment_id))?;
+
+        if split_index == 0 || split_index >= seg.source_text.len() {
+            return Err(anyhow!("Invalid split index {} for source length {}", split_index, seg.source_text.len()));
+        }
+
+        // Ensure char boundary
+        let char_idx = seg.source_text.char_indices()
+            .map(|(i, _)| i)
+            .find(|&i| i >= split_index)
+            .unwrap_or(split_index);
+
+        let part1_source = seg.source_text[..char_idx].trim().to_string();
+        let part2_source = seg.source_text[char_idx..].trim().to_string();
+
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let new_id = uuid::Uuid::new_v4().to_string();
+
+        // Increment subsequent seq_numbers for this file
+        self.conn.execute(
+            "UPDATE segments SET seq_number = seq_number + 1 WHERE file_id = ?1 AND seq_number > ?2",
+            params![seg.file_id, seg.seq_number],
+        )?;
+
+        // Update original segment to part 1
+        self.conn.execute(
+            "UPDATE segments SET source_text = ?1, modified_at = ?2 WHERE id = ?3",
+            params![part1_source, now, seg.id],
+        )?;
+
+        // Insert new segment for part 2
+        let new_seg = Segment {
+            id: new_id.clone(),
+            file_id: seg.file_id.clone(),
+            seq_number: seg.seq_number + 1,
+            source_text: part2_source.clone(),
+            target_text: String::new(),
+            status: SegmentStatus::New,
+            match_percent: None,
+            match_origin: None,
+            locked: false,
+            bookmarked: false,
+            comment: None,
+            created_at: now.clone(),
+            modified_at: now.clone(),
+            modified_by: None,
+        };
+        self.insert_segment(&new_seg)?;
+
+        let mut updated_seg1 = seg;
+        updated_seg1.source_text = part1_source;
+        updated_seg1.modified_at = now;
+
+        Ok((updated_seg1, new_seg))
+    }
+
+    pub fn merge_segments(&self, segment_id_1: &str, segment_id_2: &str) -> Result<Segment> {
+        let seg1 = self.get_segment_by_id(segment_id_1)?
+            .ok_or_else(|| anyhow!("Segment 1 not found: {}", segment_id_1))?;
+        let seg2 = self.get_segment_by_id(segment_id_2)?
+            .ok_or_else(|| anyhow!("Segment 2 not found: {}", segment_id_2))?;
+
+        if seg1.file_id != seg2.file_id {
+            return Err(anyhow!("Cannot merge segments from different files"));
+        }
+
+        let combined_source = format!("{} {}", seg1.source_text.trim(), seg2.source_text.trim());
+        let combined_target = match (!seg1.target_text.trim().is_empty(), !seg2.target_text.trim().is_empty()) {
+            (true, true) => format!("{} {}", seg1.target_text.trim(), seg2.target_text.trim()),
+            (true, false) => seg1.target_text.clone(),
+            (false, true) => seg2.target_text.clone(),
+            (false, false) => String::new(),
+        };
+
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+        // Update seg1 with combined text
+        self.conn.execute(
+            "UPDATE segments SET source_text = ?1, target_text = ?2, modified_at = ?3 WHERE id = ?4",
+            params![combined_source, combined_target, now, seg1.id],
+        )?;
+
+        // Delete seg2
+        self.conn.execute("DELETE FROM segments WHERE id = ?1", params![seg2.id])?;
+
+        // Decrement seq_numbers of subsequent segments
+        self.conn.execute(
+            "UPDATE segments SET seq_number = seq_number - 1 WHERE file_id = ?1 AND seq_number > ?2",
+            params![seg1.file_id, seg2.seq_number],
+        )?;
+
+        let mut updated_seg = seg1;
+        updated_seg.source_text = combined_source;
+        updated_seg.target_text = combined_target;
+        updated_seg.modified_at = now;
+
+        Ok(updated_seg)
+    }
+
+    pub fn toggle_bookmark(&self, segment_id: &str) -> Result<bool> {
+        let current: i32 = self.conn.query_row(
+            "SELECT bookmarked FROM segments WHERE id = ?1",
+            params![segment_id],
+            |r| r.get(0),
+        )?;
+        let new_state = if current == 0 { 1 } else { 0 };
+        self.conn.execute(
+            "UPDATE segments SET bookmarked = ?1 WHERE id = ?2",
+            params![new_state, segment_id],
+        )?;
+        Ok(new_state != 0)
     }
 
     pub fn insert_history(&self, h: &SegmentHistory) -> Result<()> {

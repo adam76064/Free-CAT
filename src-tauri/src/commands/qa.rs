@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use crate::state::AppState;
 use crate::core::models::QaResult;
-use crate::core::qa::checks::{run_all_checks};
+use crate::core::qa::checks::{run_all_checks, check_cross_consistency};
 use crate::core::db::tb_db::TbDb;
 
 /// Run all QA checks on every segment of every file in a project.
@@ -36,6 +36,7 @@ pub async fn run_qa(
     }
 
     let mut all_results = Vec::new();
+    let mut all_project_segments = Vec::new();
 
     for file_id in &file_ids {
         let segments = db.get_segments_for_file(file_id)
@@ -57,6 +58,23 @@ pub async fn run_qa(
                 all_results.push(result);
             }
         }
+        all_project_segments.extend(segments);
+    }
+
+    // Run cross-segment consistency across all collected segments
+    let consistency_issues = check_cross_consistency(&all_project_segments);
+    for (seg_id, issue) in consistency_issues {
+        let result = QaResult {
+            id:          None,
+            project_id:  project_id.clone(),
+            segment_id:  Some(seg_id),
+            check_name:  issue.check_name,
+            severity:    issue.severity,
+            message:     issue.message,
+            run_at:      now.clone(),
+        };
+        db.insert_qa_result(&result).map_err(|e| e.to_string())?;
+        all_results.push(result);
     }
 
     log::info!("QA run: {} issues found for project {}", all_results.len(), project_id);

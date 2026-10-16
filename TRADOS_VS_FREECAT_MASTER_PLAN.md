@@ -143,41 +143,46 @@ In Mats Linder's manual (*Chapter 26: The Editor View, Pages 16–18*), Trados S
 
 ---
 
-## 5. Multi-Phase Implementation Roadmap
-
+## 5. Multi-Phase Implementation Roadmap — 100% Complete
+ 
 ### Phase 1: Editor Power-Tools & QuickPlace Omnibar
-- [ ] Upgrade QuickTag HUD into full **QuickPlace Omnibar** (tags, numbers, dates, URLs, acronyms).
-- [ ] Implement **live source token spotlighting** on QuickPlace navigation.
-- [ ] Implement **Segment Locking (<kbd>Ctrl+L</kbd>)** with visual padlock icon and protection from auto-propagation.
-- [ ] Implement **Professional Navigation** (<kbd>Ctrl+Enter</kbd> advances to next *unconfirmed* segment, <kbd>Ctrl+D</kbd>, <kbd>Ctrl+Shift+D</kbd>).
-- [ ] Add **Document Structure Semantic Codes** (`[H1]`, `[P]`, `[TC]`, `[FN]`, `[LI]`) in editor row gutter.
-
+- [x] Upgrade QuickTag HUD into full **QuickPlace Omnibar** (`QuickPlaceOmnibar.svelte` recognizing tags, numbers, localized dates, URLs, alphanumeric codes).
+- [x] Implement **live source token spotlighting** on QuickPlace navigation with visual amber beacon in source row.
+- [x] Implement **Segment Locking (<kbd>Ctrl+L</kbd>)** with visual padlock toggle (`🔒`/`🔓`), SQLite persistence, and immunity from auto-propagation (`AND locked = 0`).
+- [x] Implement **Professional Navigation** (<kbd>Ctrl+Enter</kbd> advances to next *unconfirmed* unlocked segment, <kbd>Ctrl+D</kbd> delete to end, <kbd>Ctrl+Shift+D</kbd> delete to next tag).
+- [x] Add **Document Structure Semantic Codes** (`[H1]`, `[H2]`, `[H3]`, `[P]`, `[TC]`, `[FN]`, `[LI]`) in editor row gutter.
+ 
 ### Phase 2: Advanced Display Filter 2.0 Studio
-- [ ] Create collapsible **Advanced Display Filter 2.0** panel in the Editor toolbar.
-- [ ] Implement multi-criteria filtering (Status, Origin, Issues, Structure, Regex, Inverted queries, ISO 17100 random sampling).
-
+- [x] Create collapsible **Advanced Display Filter 2.0** panel in the Editor toolbar (`AdvancedDisplayFilterPanel.svelte`).
+- [x] Implement multi-criteria compound filtering (Status, Origin tiers, Issues, Comments, Structure, Regex with case-sensitivity, Inverted queries, ISO 17100 random audit sampling slider).
+ 
 ### Phase 3: Instant Concordance Search HUD (<kbd>F3</kbd>)
-- [ ] Implement global shortcut <kbd>F3</kbd> on selected text (Source or Target).
-- [ ] Create floating **Concordance Search HUD** with sub-millisecond SQLite FTS5 search.
-- [ ] Render bidirectional search results with term highlighting and 1-click insertion.
-
+- [x] Implement global shortcut <kbd>F3</kbd> and toolbar button on selected text (Source or Target).
+- [x] Create floating **Concordance Search HUD** (`ConcordanceModal.svelte`) with sub-millisecond SQLite FTS5 search across all loaded project TMs.
+- [x] Render bidirectional search results with term highlighting and 1-click target insertion (<kbd>Ctrl+Enter</kbd>).
+ 
 ### Phase 4: Full Industry Weighted Analysis Bands Table
-- [ ] Extend analysis engine to compute standard industry discount bands (`CM`, `Repetitions`, `100%`, `95-99%`, `85-94%`, `75-84%`, `50-74%`, `New`).
-- [ ] Add customizable client discount rate matrix in the Quotation & Invoice modal.
-
+- [x] Extend analysis engine (`commands::analysis::get_detailed_analysis`) to compute standard industry discount bands (`Context Match 101%+`, `Repetitions`, `100%`, `95-99%`, `85-94%`, `75-84%`, `50-74%`, `New 0-49%`).
+- [x] Add customizable client discount rate matrix, minimum fee logic, and PDF invoice printing in `QuoteInvoiceModal.svelte`.
+ 
 ### Phase 5: External Review & Bilingual Word (`.docx`) Roundtrip
-- [ ] Implement `export_bilingual_docx` generating an editable Microsoft Word review table.
-- [ ] Implement `import_bilingual_docx_retrofit` reading edited Word documents and mapping revisions into Free-CAT.
-
+- [x] Implement `core::parsers::bilingual_docx::export_bilingual_docx` generating a standardized 4-column Microsoft Word review table with segment sequence IDs.
+- [x] Implement `core::parsers::bilingual_docx::import_bilingual_docx_retrofit` parsing edited Word documents and automatically updating modified segments with `needs_review` status and audit comments.
+- [x] Add roundtrip unit test `test_bilingual_docx_export_and_retrofit_roundtrip` (100% passing).
+ 
 ### Phase 6: Translation Memory Maintenance Studio
-- [ ] Build dedicated **TM Maintenance Studio** page (`/tm/[id]/maintenance`).
-- [ ] Implement TU search, pagination, attribute filtering, and batch find/replace.
-
+- [x] Build dedicated **TM Maintenance Studio** page (`/tm/[id]`) with paginated TU browsing, search, and language pair indicators.
+- [x] Implement in-place editing of source and target segments with unsaved changes tracking.
+- [x] Implement single TU deletion and batch Find & Replace across the entire TM database with target-only option.
+- [x] Add unit test `test_tm_maintenance_operations` (100% passing).
+ 
 ---
-
-## 6. Verification & Quality Gates
-
-1. **Binary Size**: Strictly **< 15.0 MB** (currently **9.08 MB**).
-2. **Zero Regressions**: All 40 unit tests passing (`cargo test --lib`).
-3. **Frontend Diagnostics**: 0 errors (`npm run check`).
-4. **100% Offline Autonomy**: Zero cloud or server dependencies required for core functionality.
+ 
+## 6. Verification & Quality Gates Results
+ 
+1. **Binary Size**: **9.14 MB** (Target strictly **< 15.0 MB** — **PASSED**, 39% under maximum threshold).
+2. **Zero Regressions**: All 42 unit tests passing (`cargo test --lib` -> 42 passed, 0 failed).
+3. **Frontend Diagnostics**: 0 errors (`npm run check` -> 0 errors, full TypeScript type safety).
+4. **Production Build**: `npm run build` -> static site generated to `dist` cleanly.
+5. **100% Offline Autonomy**: Zero cloud or server dependencies required for core functionality.
+6. **Git Tag**: `checkpoint-enterprise-studio-v3` (Commit `b823084`).

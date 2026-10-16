@@ -2,13 +2,25 @@
 // All Phase 1 QA checks — 10 automated checks implemented as pure functions.
 // Each check takes a segment and returns Option<QaIssue>.
 
+use serde::{Deserialize, Serialize};
 use crate::core::models::{Segment, TermEntry};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QaIssue {
     pub check_name: String,
     pub severity:   String, // "warning" | "error"
     pub message:    String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomQaRule {
+    pub id: String,
+    pub name: String,
+    pub source_regex: Option<String>,
+    pub target_regex: Option<String>,
+    pub forbid_target: bool,
+    pub severity: String,
+    pub message: String,
 }
 
 /// Run all enabled QA checks against a segment.
@@ -31,6 +43,108 @@ pub fn run_all_checks(
     if let Some(i) = check_punctuation(segment)        { issues.push(i); }
     issues.extend(check_forbidden_terms(segment, forbidden_terms));
 
+    issues
+}
+
+/// Extended QA checks with typography linting (French NBSP, Arabic quotes, BiDi marks) and custom regex rules
+pub fn run_all_checks_ext(
+    segment: &Segment,
+    forbidden_terms: &[TermEntry],
+    max_length: Option<usize>,
+    tgt_lang: Option<&str>,
+    custom_rules: &[CustomQaRule],
+) -> Vec<QaIssue> {
+    let mut issues = run_all_checks(segment, forbidden_terms, max_length);
+    issues.extend(check_typography(segment, tgt_lang));
+    issues.extend(check_custom_rules(segment, custom_rules));
+    issues
+}
+
+/// QA-11: Typography linting (French non-breaking spaces, quotation marks, BiDi marks)
+pub fn check_typography(seg: &Segment, tgt_lang: Option<&str>) -> Vec<QaIssue> {
+    let mut issues = Vec::new();
+    let tgt = seg.target_text.trim();
+    if tgt.is_empty() {
+        return issues;
+    }
+
+    let lang_lower = tgt_lang.unwrap_or("").to_lowercase();
+    let is_french = lang_lower.starts_with("fr");
+    let is_arabic = lang_lower.starts_with("ar");
+
+    // French typography: non-breaking space required before high punctuation [:;!?]
+    if is_french {
+        for c in [':', ';', '!', '?'] {
+            let bad_pattern = format!(" {}", c);
+            if tgt.contains(&bad_pattern) {
+                issues.push(QaIssue {
+                    check_name: "typography_french_space".into(),
+                    severity: "warning".into(),
+                    message: format!("French typography requires a non-breaking space before '{}'.", c),
+                });
+                break;
+            }
+        }
+    }
+
+    // Arabic quotation marks: standard typography recommends « ... » rather than straight quotes "
+    if is_arabic && (tgt.contains('"') || tgt.contains('“') || tgt.contains('”')) {
+        issues.push(QaIssue {
+            check_name: "typography_arabic_quotes".into(),
+            severity: "warning".into(),
+            message: "Standard Arabic typography recommends guillemets « ... » instead of Latin quotation marks.".into(),
+        });
+    }
+
+    // BiDi marks: check for unclosed directional overrides
+    let ltr_override = '\u{202D}';
+    let rtl_override = '\u{202E}';
+    let pop_directional = '\u{202C}';
+    let has_override = tgt.contains(ltr_override) || tgt.contains(rtl_override);
+    if has_override && !tgt.contains(pop_directional) {
+        issues.push(QaIssue {
+            check_name: "typography_bidi_override".into(),
+            severity: "error".into(),
+            message: "Unclosed BiDi directional override detected in target segment.".into(),
+        });
+    }
+
+    issues
+}
+
+/// QA-12: Custom User Regex Rules
+pub fn check_custom_rules(seg: &Segment, rules: &[CustomQaRule]) -> Vec<QaIssue> {
+    let mut issues = Vec::new();
+    for rule in rules {
+        let mut source_matched = true;
+        if let Some(src_pat) = &rule.source_regex {
+            if let Ok(re) = regex::Regex::new(src_pat) {
+                source_matched = re.is_match(&seg.source_text);
+            }
+        }
+        if !source_matched {
+            continue;
+        }
+
+        if let Some(tgt_pat) = &rule.target_regex {
+            if let Ok(re) = regex::Regex::new(tgt_pat) {
+                let tgt_matched = re.is_match(&seg.target_text);
+                if rule.forbid_target && tgt_matched {
+                    issues.push(QaIssue {
+                        check_name: format!("custom_{}", rule.name),
+                        severity: rule.severity.clone(),
+                        message: rule.message.clone(),
+                    });
+                } else if !rule.forbid_target && !tgt_matched {
+                    issues.push(QaIssue {
+                        check_name: format!("custom_{}", rule.name),
+                        severity: rule.severity.clone(),
+                        message: rule.message.clone(),
+                    });
+                }
+            }
+        }
+    }
     issues
 }
 

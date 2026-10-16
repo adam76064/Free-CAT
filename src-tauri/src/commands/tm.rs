@@ -85,6 +85,52 @@ pub async fn query_tm(
 }
 
 #[derive(serde::Deserialize)]
+pub struct QueryFragmentsArgs {
+    pub source_text: String,
+    pub src_lang:    String,
+    pub tgt_lang:    String,
+    pub tm_ids:      Vec<String>,
+}
+
+/// Query TMs for sub-segment fragment matches against source n-grams.
+#[tauri::command]
+pub async fn query_fragments(
+    args: QueryFragmentsArgs,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::core::tm::fragment::FragmentMatch>, String> {
+    let tm_index = state.tm_index.lock().unwrap().clone();
+
+    let candidates: Vec<_> = if args.tm_ids.is_empty() {
+        tm_index.iter().filter(|e| (e.src_lang == args.src_lang && e.tgt_lang == args.tgt_lang) || e.id.starts_with("proj-tm-")).collect()
+    } else {
+        tm_index.iter().filter(|e| args.tm_ids.contains(&e.id)).collect()
+    };
+
+    let mut all_results = Vec::new();
+    for tm_entry in candidates {
+        let tm = TmDb::open(
+            tm_entry.id.clone(),
+            tm_entry.name.clone(),
+            tm_entry.path.clone(),
+        ).map_err(|e| e.to_string())?;
+
+        let matches = tm.search_fragments(
+            &args.source_text,
+            &args.src_lang,
+            &args.tgt_lang,
+            5,
+        ).map_err(|e| e.to_string())?;
+
+        all_results.extend(matches);
+        if all_results.len() >= 8 {
+            break;
+        }
+    }
+
+    Ok(all_results)
+}
+
+#[derive(serde::Deserialize)]
 pub struct AddToTmArgs {
     pub tm_id:       String,
     pub source_text: String,

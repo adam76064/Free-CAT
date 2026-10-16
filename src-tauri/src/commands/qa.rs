@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use crate::state::AppState;
 use crate::core::models::QaResult;
-use crate::core::qa::checks::{run_all_checks, check_cross_consistency};
+use crate::core::qa::checks::{run_all_checks_ext, check_cross_consistency};
 use crate::core::db::tb_db::TbDb;
 
 /// Run all QA checks on every segment of every file in a project.
@@ -19,6 +19,9 @@ pub async fn run_qa(
 ) -> Result<Vec<QaResult>, String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let db = state.project_db.lock().unwrap();
+
+    let project = db.get_project(&project_id).ok().flatten();
+    let tgt_lang = project.as_ref().map(|p| p.tgt_lang.as_str());
 
     // Clear previous QA results
     db.clear_qa_results(&project_id).map_err(|e| e.to_string())?;
@@ -43,7 +46,7 @@ pub async fn run_qa(
             .map_err(|e| e.to_string())?;
 
         for seg in &segments {
-            let issues = run_all_checks(seg, &forbidden_terms, None);
+            let issues = run_all_checks_ext(seg, &forbidden_terms, None, tgt_lang, &[]);
             for issue in issues {
                 let result = QaResult {
                     id:          None,

@@ -241,6 +241,61 @@ impl TmDb {
             "SELECT COUNT(*) FROM translation_units", [], |r| r.get(0)
         )?)
     }
+
+    /// Search for sub-segment fragment matches against n-grams of the source text.
+    pub fn search_fragments(
+        &self,
+        source_text: &str,
+        src_lang: &str,
+        tgt_lang: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::core::tm::fragment::FragmentMatch>> {
+        use crate::core::tm::fragment::{extract_source_ngrams, FragmentMatch};
+
+        let ngrams = extract_source_ngrams(source_text, 3, 6);
+        let mut results = Vec::new();
+        let mut seen_targets = std::collections::HashSet::new();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT tu.id, tu.source_text, tu.target_text
+             FROM tm_fts
+             JOIN translation_units tu ON tu.id = tm_fts.rowid
+             WHERE tm_fts MATCH ?1
+               AND tu.source_lang = ?2
+               AND tu.target_lang = ?3
+             ORDER BY rank
+             LIMIT 3"
+        )?;
+
+        for phrase in ngrams {
+            let query = format!("\"{}\"", phrase.replace('"', ""));
+            let rows = stmt.query_map(params![query, src_lang, tgt_lang], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+            });
+
+            if let Ok(mapped) = rows {
+                for item in mapped.flatten() {
+                    let (tu_id, src_sentence, tgt_sentence) = item;
+                    if src_sentence.trim() != source_text.trim() && seen_targets.insert(tgt_sentence.clone()) {
+                        results.push(FragmentMatch {
+                            source_fragment: phrase.clone(),
+                            target_fragment: tgt_sentence.clone(),
+                            source_sentence: src_sentence,
+                            target_sentence: tgt_sentence,
+                            tu_id,
+                            tm_id: self.id.clone(),
+                            tm_name: self.name.clone(),
+                        });
+                        if results.len() >= limit {
+                            return Ok(results);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 /// Build a safe FTS5 MATCH query from raw input.

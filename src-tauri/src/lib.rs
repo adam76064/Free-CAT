@@ -63,8 +63,10 @@ pub fn run() {
             commands::segment::toggle_bookmark,
             commands::segment::update_segment_comment,
             commands::segment::get_segment_history,
+            commands::segment::get_combined_segments,
             // TM commands
             commands::tm::query_tm,
+            commands::tm::query_fragments,
             commands::tm::add_to_tm,
             commands::tm::import_tmx,
             commands::tm::export_tmx,
@@ -102,6 +104,7 @@ pub fn run() {
             commands::file_io::export_sdlrpx,
             // AI assistant commands
             commands::ai::query_ai_assistant,
+            commands::ai::query_document_ai_copilot,
             // Aligner commands
             commands::aligner::align_texts,
             commands::aligner::align_files,

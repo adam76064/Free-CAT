@@ -19,6 +19,18 @@ pub async fn get_segments(
         .map_err(|e| e.to_string())
 }
 
+/// Get combined segments for multiple files (Virtual Document Session).
+#[tauri::command]
+pub async fn get_combined_segments(
+    file_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Segment>, String> {
+    state.project_db
+        .lock().unwrap()
+        .get_segments_for_files(&file_ids)
+        .map_err(|e| e.to_string())
+}
+
 /// Get a single segment by ID.
 #[tauri::command]
 pub async fn get_segment(

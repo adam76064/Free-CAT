@@ -342,6 +342,44 @@ impl ProjectDb {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    pub fn get_segments_for_files(&self, file_ids: &[String]) -> Result<Vec<Segment>> {
+        if file_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders: Vec<String> = (1..=file_ids.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT id, file_id, seq_number, source_text, target_text, status,
+                    match_percent, match_origin, locked, bookmarked, comment,
+                    created_at, modified_at, modified_by
+             FROM segments
+             WHERE file_id IN ({})
+             ORDER BY file_id, seq_number ASC",
+            placeholders.join(",")
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params = rusqlite::params_from_iter(file_ids);
+        let rows = stmt.query_map(params, |row| {
+            let status_str: String = row.get(5)?;
+            Ok(Segment {
+                id:            row.get(0)?,
+                file_id:       row.get(1)?,
+                seq_number:    row.get(2)?,
+                source_text:   row.get(3)?,
+                target_text:   row.get(4)?,
+                status:        SegmentStatus::from_str(&status_str),
+                match_percent: row.get(6)?,
+                match_origin:  row.get(7)?,
+                locked:        row.get::<_, i32>(8)? != 0,
+                bookmarked:    row.get::<_, i32>(9)? != 0,
+                comment:       row.get(10)?,
+                created_at:    row.get(11)?,
+                modified_at:   row.get(12)?,
+                modified_by:   row.get(13)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn get_segment_by_id(&self, id: &str) -> Result<Option<Segment>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, file_id, seq_number, source_text, target_text, status,

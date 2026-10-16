@@ -4,7 +4,7 @@
   import { goto } from '$app/navigation';
   import { segments, selectedIndex } from '$lib/stores/segments';
   import { currentProject, currentFiles, currentFileId, currentFile, projectSettings } from '$lib/stores/project';
-  import { getSegments } from '$lib/ipc/segment';
+  import { getSegments, getCombinedSegments } from '$lib/ipc/segment';
   import { openProject, exportFile } from '$lib/ipc/project';
   import { listTms } from '$lib/ipc/tm';
   import { availableTms } from '$lib/stores/tm';
@@ -14,16 +14,20 @@
 
   $: projectId = $page.params.id as string;
   $: fileId = $page.url.searchParams.get('file');
+  $: filesParam = $page.url.searchParams.get('files');
 
   let loading = true;
   let error = '';
   let exporting = false;
+  let isCombined = false;
+  let combinedCount = 0;
 
   onMount(async () => {
     const pid = projectId;
     const fid = fileId;
+    const fids = filesParam ? filesParam.split(',').filter(Boolean) : [];
 
-    if (!fid) {
+    if (!fid && fids.length === 0) {
       goto(`/project/${pid}`);
       return;
     }
@@ -36,13 +40,21 @@
         projectSettings.set(parseSettings(proj.settings));
       }
 
-      currentFileId.set(fid);
-
       const tms = await listTms();
       availableTms.set(tms);
 
-      const segs = await getSegments(fid, pid);
-      segments.set(segs);
+      if (fids.length > 0) {
+        isCombined = true;
+        combinedCount = fids.length;
+        currentFileId.set(fids[0]);
+        const segs = await getCombinedSegments(fids);
+        segments.set(segs);
+      } else if (fid) {
+        isCombined = false;
+        currentFileId.set(fid);
+        const segs = await getSegments(fid, pid);
+        segments.set(segs);
+      }
       selectedIndex.set(0);
     } catch (e: any) {
       error = String(e);
@@ -91,7 +103,19 @@
     </button>
 
     <div class="flex-1 min-w-0">
-      {#if $currentFile}
+      {#if isCombined}
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-gray-900 dark:text-white text-sm truncate flex items-center gap-1.5">
+            <span>🗂️ Combined Virtual Document</span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-brand-800 dark:bg-brand-900/40 dark:text-brand-300 font-mono font-semibold">
+              {combinedCount} files
+            </span>
+          </span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">
+            {$currentProject?.src_lang} → {$currentProject?.tgt_lang}
+          </span>
+        </div>
+      {:else if $currentFile}
         <div class="flex items-center gap-2">
           <span class="font-medium text-gray-900 dark:text-white text-sm truncate">
             {$currentFile.filename}

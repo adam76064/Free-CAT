@@ -133,6 +133,29 @@
     goto(`/project/${projectId}/editor?file=${fileId}`);
   }
 
+  let selectedFileIds: string[] = [];
+
+  function toggleFileSelect(id: string) {
+    if (selectedFileIds.includes(id)) {
+      selectedFileIds = selectedFileIds.filter(f => f !== id);
+    } else {
+      selectedFileIds = [...selectedFileIds, id];
+    }
+  }
+
+  function toggleSelectAllFiles() {
+    if (selectedFileIds.length === $currentFiles.length) {
+      selectedFileIds = [];
+    } else {
+      selectedFileIds = $currentFiles.map(f => f.id);
+    }
+  }
+
+  function openCombinedEditor() {
+    if (selectedFileIds.length === 0) return;
+    goto(`/project/${projectId}/editor?files=${selectedFileIds.join(',')}`);
+  }
+
   async function handleExportSingleFile(file: any) {
     if (!$currentProject) return;
     try {
@@ -278,9 +301,32 @@
 
       <!-- Files list -->
       <div>
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-3">
-          Files ({$currentFiles.length})
-        </h2>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+              Files ({$currentFiles.length})
+            </h2>
+            {#if $currentFiles.length > 1}
+              <button
+                type="button"
+                on:click={toggleSelectAllFiles}
+                class="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium cursor-pointer"
+              >
+                {selectedFileIds.length === $currentFiles.length ? 'Deselect All' : 'Select All'}
+              </button>
+            {/if}
+          </div>
+
+          {#if selectedFileIds.length > 1}
+            <button
+              type="button"
+              on:click={openCombinedEditor}
+              class="px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer animate-in fade-in"
+            >
+              <span>🗂️ Translate Combined ({selectedFileIds.length} files) →</span>
+            </button>
+          {/if}
+        </div>
 
         {#if $currentFiles.length === 0}
           <div class="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl
@@ -302,9 +348,18 @@
         {:else}
           <div class="space-y-2">
             {#each $currentFiles as file (file.id)}
-              <div class="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-xl
+              <div class="flex items-center gap-3.5 p-3.5 bg-white dark:bg-gray-900 rounded-xl
                           border border-gray-200 dark:border-gray-800
                           hover:border-brand-300 dark:hover:border-brand-700 transition-colors shadow-xs">
+                <!-- Selection Checkbox -->
+                <input
+                  type="checkbox"
+                  checked={selectedFileIds.includes(file.id)}
+                  on:change={() => toggleFileSelect(file.id)}
+                  class="rounded accent-brand-500 w-4 h-4 cursor-pointer"
+                  title="Select for combined translation"
+                />
+
                 <span class="text-2xl">{FILE_ICONS[file.format] ?? '📄'}</span>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white truncate">{file.filename}</div>

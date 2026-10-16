@@ -14,7 +14,7 @@
 
   let activeIndex = $derived($selectedIndex);
   let totalSegments = $derived($segments.length);
-  let translatedCount = $derived($segments.filter(s => s.status === 'confirmed').length);
+  let translatedCount = $derived($segments.filter(s => s.status === 'translated').length);
   let progressPct = $derived(totalSegments > 0 ? Math.round((translatedCount / totalSegments) * 100) : 0);
 
   function handleSegmentClick(index: number) {
@@ -98,15 +98,15 @@
               onkeydown={(e) => e.key === 'Enter' && handleSegmentClick(idx)}
               role="button"
               tabindex="0"
-              title="Segment #{seg.segment_num} ({seg.status}) - Click to jump"
+              title="Segment #{seg.seq_number} ({seg.status}) - Click to jump"
               class="cursor-pointer transition-colors duration-150 rounded px-1 py-0.5 inline mr-1
                      {idx === activeIndex
                        ? 'bg-brand-500/20 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/50 font-medium'
-                       : seg.status === 'confirmed'
+                       : seg.status === 'translated'
                        ? 'hover:bg-gray-100 dark:hover:bg-gray-800'
                        : 'text-gray-400 dark:text-gray-500 italic hover:bg-amber-50 dark:hover:bg-amber-950/30'}"
             >
-              {seg.target_text ? seg.target_text : `[#${seg.segment_num}: ${seg.source_text}]`}
+              {seg.target_text ? seg.target_text : `[#${seg.seq_number}: ${seg.source_text}]`}
             </span>
           {/each}
         </p>
@@ -122,7 +122,7 @@
               onkeydown={(e) => e.key === 'Enter' && handleSegmentClick(idx)}
               role="button"
               tabindex="0"
-              title="Segment #{seg.segment_num} - Click to jump"
+              title="Segment #{seg.seq_number} - Click to jump"
               class="cursor-pointer transition-colors duration-150 rounded px-1 py-0.5 inline mr-1
                      {idx === activeIndex
                        ? 'bg-brand-500/20 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/50 font-medium'
@@ -149,8 +149,8 @@
                      : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-850'}"
           >
             <div class="flex items-center justify-between text-[11px] text-gray-400 mb-1">
-              <span class="font-mono">#{seg.segment_num}</span>
-              <span class="capitalize {seg.status === 'confirmed' ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''}">{seg.status}</span>
+              <span class="font-mono">#{seg.seq_number}</span>
+              <span class="capitalize {seg.status === 'translated' ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''}">{seg.status}</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-normal">
               {seg.source_text}

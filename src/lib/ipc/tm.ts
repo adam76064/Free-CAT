@@ -3,6 +3,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { TmMatch, TmInfo } from '$lib/stores/tm';
+export type { TmMatch, TmInfo };
 
 export async function queryTm(args: {
   source_text: string;
@@ -67,4 +68,23 @@ export async function concordanceSearch(args: {
     tmIds: args.tm_ids,
     limit: args.limit,
   });
+}
+
+export interface FragmentMatch {
+  source_fragment: string;
+  target_fragment: string;
+  source_sentence: string;
+  target_sentence: string;
+  tu_id: number;
+  tm_id: string;
+  tm_name: string;
+}
+
+export async function queryFragments(args: {
+  source_text: string;
+  src_lang: string;
+  tgt_lang: string;
+  tm_ids: string[];
+}): Promise<FragmentMatch[]> {
+  return invoke('query_fragments', { args });
 }

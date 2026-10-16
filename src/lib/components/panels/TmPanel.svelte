@@ -5,7 +5,7 @@
   import { currentProject } from '$lib/stores/project';
   import { settings } from '$lib/stores/settings';
   import TmMatchBadge from '$lib/components/tm/TmMatchBadge.svelte';
-  import { concordanceSearch } from '$lib/ipc/tm';
+  import { concordanceSearch, queryFragments, type FragmentMatch } from '$lib/ipc/tm';
   import { getMtSuggestion } from '$lib/ipc/project';
 
   interface Props {
@@ -13,7 +13,35 @@
   }
   let { onApply }: Props = $props();
 
-  let activeTab = $state<'tm' | 'mt' | 'concordance'>('tm');
+  let activeTab = $state<'tm' | 'fragments' | 'mt' | 'concordance'>('tm');
+
+  // Fragment Matching state
+  let fragmentMatches = $state<FragmentMatch[]>([]);
+  let fragmentsLoading = $state(false);
+
+  async function loadFragments() {
+    if (!$selectedSegment || !$currentProject) return;
+    fragmentsLoading = true;
+    try {
+      const res = await queryFragments({
+        source_text: $selectedSegment.source_text,
+        src_lang: $currentProject.src_lang,
+        tgt_lang: $currentProject.tgt_lang,
+        tm_ids: [],
+      });
+      fragmentMatches = res;
+    } catch (e) {
+      console.warn('Failed to load fragments:', e);
+    } finally {
+      fragmentsLoading = false;
+    }
+  }
+
+  $effect(() => {
+    if ($selectedSegment) {
+      loadFragments();
+    }
+  });
 
   // Concordance state
   let searchQuery = $state('');
@@ -107,7 +135,21 @@
                ? 'text-brand-600 dark:text-brand-400 border-b-2 border-brand-500 bg-white dark:bg-gray-900 font-semibold'
                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
     >
-      TM Matches
+      TM
+    </button>
+    <button
+      onclick={() => { activeTab = 'fragments'; loadFragments(); }}
+      class="flex-1 py-1.5 text-xs font-medium transition-colors text-center flex items-center justify-center gap-1
+             {activeTab === 'fragments'
+               ? 'text-brand-600 dark:text-brand-400 border-b-2 border-brand-500 bg-white dark:bg-gray-900 font-semibold'
+               : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+    >
+      <span>🧩 Frag</span>
+      {#if fragmentMatches.length > 0}
+        <span class="w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[9px] flex items-center justify-center font-bold">
+          {fragmentMatches.length}
+        </span>
+      {/if}
     </button>
     <button
       onclick={() => activeTab = 'mt'}
@@ -217,6 +259,52 @@
                   </div>
                 </div>
               {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else if activeTab === 'fragments'}
+    <!-- Sub-Segment Fragment Recall Pane -->
+    <div class="flex-1 overflow-y-auto">
+      {#if fragmentsLoading}
+        <div class="flex items-center justify-center h-24 text-gray-400 text-sm">
+          Recalling sub-segment fragments…
+        </div>
+      {:else if fragmentMatches.length === 0}
+        <div class="flex flex-col items-center justify-center h-28 text-gray-400 text-sm gap-1 px-4 text-center">
+          <span>No sub-segment fragments found</span>
+          <span class="text-xs text-gray-400">Occurs when phrases have no prior matches in TM.</span>
+        </div>
+      {:else}
+        <div class="p-2 text-[11px] text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <span>{fragmentMatches.length} matching phrase fragments</span>
+          <span class="text-[10px] font-mono">Click to insert</span>
+        </div>
+        <div class="divide-y divide-gray-100 dark:divide-gray-800">
+          {#each fragmentMatches as frag}
+            <div class="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-mono bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 px-1.5 py-0.5 rounded font-semibold">
+                  N-Gram Phrase
+                </span>
+                <span class="text-[10px] text-gray-400 truncate max-w-[120px]">{frag.tm_name}</span>
+              </div>
+              <div class="text-xs font-semibold text-gray-900 dark:text-gray-100 mb-1" dir="auto">
+                <span class="bg-yellow-100 dark:bg-yellow-900/40 px-1 rounded">{frag.source_fragment}</span>
+              </div>
+              <div class="text-xs text-gray-600 dark:text-gray-300 font-editor mb-2" dir="auto">
+                ➔ {frag.target_sentence}
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onclick={() => onApply(frag.target_sentence)}
+                  class="px-2 py-0.5 bg-brand-500 hover:bg-brand-600 text-white rounded text-[11px] font-medium transition-colors cursor-pointer"
+                >
+                  Insert Target
+                </button>
+              </div>
             </div>
           {/each}
         </div>

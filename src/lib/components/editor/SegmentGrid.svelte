@@ -32,6 +32,7 @@
   import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark } from '$lib/ipc/segment';
   import { settings } from '$lib/stores/settings';
   import { runQa, preTranslate } from '$lib/ipc/project';
+  import { queryAiAssistant } from '$lib/ipc/ai';
 
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
@@ -45,6 +46,95 @@
   let isToolsMenuOpen = false;
   let activeAutoPatch: string | null = null;
 
+  // Session velocity tracking
+  let sessionStartTime = Date.now();
+  let sessionConfirmedWords = 0;
+  $: sessionElapsedHours = Math.max(0.005, (Date.now() - sessionStartTime) / (1000 * 60 * 60));
+  $: sessionVelocityWordsPerHour = Math.round(sessionConfirmedWords / sessionElapsedHours);
+
+  // Active segment word/char metrics
+  $: activeSegSrcWords = $selectedSegment ? $selectedSegment.source_text.trim().split(/\s+/).filter(Boolean).length : 0;
+  $: activeSegSrcChars = $selectedSegment ? $selectedSegment.source_text.length : 0;
+  $: activeSegTgtWords = $selectedSegment ? $selectedSegment.target_text.trim().split(/\s+/).filter(Boolean).length : 0;
+
+  // Draggable splitters state
+  let isResizingSource = false;
+  let isResizingInspector = false;
+  let startX = 0;
+  let startRatio = 50;
+  let startInspectorWidth = 340;
+
+  function handleStartSourceResize(e: PointerEvent) {
+    e.preventDefault();
+    isResizingSource = true;
+    startX = e.clientX;
+    startRatio = $settings.sourceRatio;
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }
+
+  function handleStartInspectorResize(e: PointerEvent) {
+    e.preventDefault();
+    isResizingInspector = true;
+    startX = e.clientX;
+    startInspectorWidth = $settings.inspectorWidth;
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }
+
+  function handlePointerMove(e: PointerEvent) {
+    if (isResizingSource && gridContainer) {
+      const gridRect = gridContainer.getBoundingClientRect();
+      const availableWidth = gridRect.width - 44; // minus seq column
+      const deltaX = e.clientX - startX;
+      const newRatio = Math.round(startRatio + (deltaX / availableWidth) * 100);
+      const clamped = Math.max(25, Math.min(75, newRatio));
+      settings.update(s => ({ ...s, sourceRatio: clamped }));
+    } else if (isResizingInspector) {
+      const deltaX = startX - e.clientX;
+      const newWidth = Math.max(260, Math.min(650, startInspectorWidth + deltaX));
+      settings.update(s => ({ ...s, inspectorWidth: newWidth }));
+    }
+  }
+
+  function handlePointerUp() {
+    isResizingSource = false;
+    isResizingInspector = false;
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+  }
+
+  async function handleAiRefineAction(action: string, selectedText: string) {
+    const seg = $selectedSegment;
+    if (!seg || !$currentProject) return;
+    try {
+      const res = await queryAiAssistant({
+        prompt: `Please ${action} this text: "${selectedText}"`,
+        source_text: seg.source_text,
+        target_text: seg.target_text,
+        src_lang: $currentProject.src_lang,
+        tgt_lang: $currentProject.tgt_lang,
+        action: action === 'rephrase' ? 'rephrase' : 'ask',
+        config: {
+          provider: $settings.ollama_url ? 'ollama' : 'openai',
+          endpoint: $settings.ollama_url || 'http://localhost:11434',
+          model: 'llama3.2',
+          api_key: undefined,
+        }
+      });
+      if (res && res.reply) {
+        let cleaned = res.reply.trim();
+        if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+          cleaned = cleaned.slice(1, -1);
+        }
+        const newTarget = seg.target_text.replace(selectedText, cleaned);
+        handleTargetChange(seg.id, newTarget);
+      }
+    } catch (e) {
+      console.warn('AI Refine failed:', e);
+    }
+  }
+
   $: documentText = $segments.map(s => s.source_text).join('. ');
 
   // In-memory Trie for AutoSuggest
@@ -54,12 +144,14 @@
   $: {
     suggestTrie.clear();
     for (const m of $termMatches) {
-      suggestTrie.insert(m.target_term, {
-        text: m.target_term,
-        source: 'termbase',
-        matchScore: 100,
-        displayText: `${m.source_term} → ${m.target_term}`
-      });
+      if (m.term) {
+        suggestTrie.insert(m.term, {
+          text: m.term,
+          source: 'termbase',
+          matchScore: 100,
+          displayText: m.definition ? `${m.term} (${m.definition})` : m.term,
+        });
+      }
     }
     for (const tm of $tmMatches) {
       if (tm.target_text) {
@@ -68,7 +160,7 @@
           suggestTrie.insert(w, {
             text: w,
             source: 'tm',
-            matchScore: tm.similarity,
+            matchScore: tm.score_pct,
           });
         }
       }
@@ -87,7 +179,7 @@
   let segmentToSplit: Segment | null = null;
   let splitSliderPos = 1;
 
-  // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K)
+  // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K, Ctrl+L)
   function handleWindowKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
@@ -103,6 +195,12 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       isCommandPaletteOpen = !isCommandPaletteOpen;
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      settings.update(s => {
+        const next = s.layoutMode === 'side-by-side' ? 'stacked' : s.layoutMode === 'stacked' ? 'zen' : 'side-by-side';
+        return { ...s, layoutMode: next };
+      });
     }
   }
 
@@ -112,6 +210,8 @@
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleWindowKeydown);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
   });
 
   // TM and TB lookup whenever selected segment changes
@@ -247,6 +347,7 @@
 
     clearTimeout(autoSaveTimer);
     updateSegmentInStore(seg.id, { status: 'translated', target_text: seg.target_text });
+    sessionConfirmedWords += seg.target_text.trim().split(/\s+/).filter(Boolean).length;
 
     try {
       const propagated = await confirmSegment({
@@ -627,15 +728,33 @@
       aria-label="Translation editor"
     >
       <!-- Column headers -->
-      <div class="grid grid-cols-[2.5rem_1fr_1fr] sticky top-0 z-10
-                  bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-800">
+      <div
+        class="grid sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-800"
+        style={$settings.layoutMode === 'stacked'
+          ? 'grid-template-columns: 2.75rem 1fr;'
+          : `grid-template-columns: 2.75rem minmax(200px, ${$settings.sourceRatio}%) minmax(200px, 1fr);`}
+      >
         <div class="py-1.5 px-1 text-xs text-gray-400 text-center">#</div>
-        <div class="py-1.5 px-3 text-xs font-semibold text-gray-600 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700">
-          Source ({$currentProject?.src_lang ?? ''})
-        </div>
-        <div class="py-1.5 px-3 text-xs font-semibold text-gray-600 dark:text-gray-400">
-          Target ({$currentProject?.tgt_lang ?? ''})
-        </div>
+        {#if $settings.layoutMode === 'stacked'}
+          <div class="py-1.5 px-3 text-xs font-semibold text-gray-600 dark:text-gray-400">
+            Source ({$currentProject?.src_lang ?? ''}) ➔ Target ({$currentProject?.tgt_lang ?? ''})
+          </div>
+        {:else}
+          <div class="py-1.5 px-3 text-xs font-semibold text-gray-600 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700 relative flex items-center justify-between">
+            <span>Source ({$currentProject?.src_lang ?? ''})</span>
+            <!-- Draggable Splitter Handle -->
+            <div
+              class="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-20 flex items-center justify-center opacity-60 hover:opacity-100"
+              on:pointerdown={handleStartSourceResize}
+              title="Drag to adjust Source/Target ratio"
+            >
+              <div class="w-0.5 h-3 bg-gray-400 dark:bg-gray-500 rounded"></div>
+            </div>
+          </div>
+          <div class="py-1.5 px-3 text-xs font-semibold text-gray-600 dark:text-gray-400">
+            Target ({$currentProject?.tgt_lang ?? ''})
+          </div>
+        {/if}
       </div>
 
       <!-- Segment rows -->
@@ -661,14 +780,27 @@
             onMergeNext={handleMergeNext}
             onMergePrev={handleMergePrev}
             onToggleBookmark={handleToggleBookmark}
+            onAiRefineAction={handleAiRefineAction}
           />
         {/each}
       {/if}
     </div>
 
-    <!-- Right panel with tabs -->
+    <!-- Right panel with tabs & draggable splitter -->
     {#if isInspectorOpen}
-      <div class="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950">
+      <div
+        class="shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950 relative"
+        style="width: {$settings.inspectorWidth}px;"
+      >
+        <!-- Left Draggable Splitter Handle -->
+        <div
+          class="absolute -left-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-20 flex items-center justify-center opacity-60 hover:opacity-100"
+          on:pointerdown={handleStartInspectorResize}
+          title="Drag to resize Inspector panel"
+        >
+          <div class="w-0.5 h-4 bg-gray-400 dark:bg-gray-500 rounded"></div>
+        </div>
+
         <!-- Tab headers -->
         <div class="flex items-center border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-1 py-1 gap-1 shrink-0 overflow-x-auto">
           <button
@@ -756,12 +888,104 @@
           {:else if activeTab === 'comments'}
             <CommentsPanel />
           {:else if activeTab === 'preview'}
-            <LivePreviewPanel onSelectSegment={(idx) => jumpToSegment(idx)} />
+            <LivePreviewPanel onSelectSegment={(idx) => { selectedIndex.set(idx); scrollToSelected(); }} />
           {/if}
         </div>
       </div>
     {/if}
 
+  </div>
+
+  <!-- Bottom Ergonomic Studio Status Bar -->
+  <div class="h-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xs px-3 flex items-center justify-between text-xs text-gray-500 shrink-0 select-none z-10">
+    <!-- Left: Velocity & Active Segment Metrics -->
+    <div class="flex items-center gap-3">
+      <span class="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400" title="Live translation velocity for current session">
+        <span>⚡</span>
+        <span class="tabular-nums font-mono font-semibold">{sessionVelocityWordsPerHour}</span> w/h
+      </span>
+      <span class="text-gray-300 dark:text-gray-700">|</span>
+      <span class="text-gray-600 dark:text-gray-400 text-[11px]">
+        Active: <strong class="text-gray-900 dark:text-gray-100">{activeSegSrcWords}</strong> src words ({activeSegSrcChars} chars) ➔ <strong class="text-gray-900 dark:text-gray-100">{activeSegTgtWords}</strong> tgt words
+      </span>
+    </div>
+
+    <!-- Right: Revision Mode, Layout Switcher, Zoom, WAL Sync -->
+    <div class="flex items-center gap-2.5">
+      <!-- Revision Mode Toggle -->
+      <button
+        type="button"
+        on:click={() => settings.update(s => ({ ...s, revisionMode: !s.revisionMode }))}
+        class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer
+               {$settings.revisionMode ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 font-bold border border-amber-300' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}"
+        title="Toggle Track Changes / Revision Mode"
+      >
+        <span>📝 Track Changes:</span>
+        <span>{$settings.revisionMode ? 'ON' : 'OFF'}</span>
+      </button>
+
+      <span class="text-gray-300 dark:text-gray-700">|</span>
+
+      <!-- Layout Switcher (Ctrl+L) -->
+      <div class="flex items-center gap-0.5 bg-gray-200/60 dark:bg-gray-800 rounded p-0.5" title="Switch Workspace Layout (Ctrl+L)">
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, layoutMode: 'side-by-side' }))}
+          class="px-1.5 py-0.5 text-[10px] rounded transition-colors cursor-pointer {$settings.layoutMode === 'side-by-side' ? 'bg-white dark:bg-gray-700 font-bold text-brand-600 shadow-2xs' : 'text-gray-500 hover:text-gray-800'}"
+        >
+          Side-by-Side
+        </button>
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, layoutMode: 'stacked' }))}
+          class="px-1.5 py-0.5 text-[10px] rounded transition-colors cursor-pointer {$settings.layoutMode === 'stacked' ? 'bg-white dark:bg-gray-700 font-bold text-brand-600 shadow-2xs' : 'text-gray-500 hover:text-gray-800'}"
+        >
+          Stacked
+        </button>
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, layoutMode: 'zen' }))}
+          class="px-1.5 py-0.5 text-[10px] rounded transition-colors cursor-pointer {$settings.layoutMode === 'zen' ? 'bg-white dark:bg-gray-700 font-bold text-purple-600 shadow-2xs' : 'text-gray-500 hover:text-gray-800'}"
+        >
+          Zen
+        </button>
+      </div>
+
+      <span class="text-gray-300 dark:text-gray-700">|</span>
+
+      <!-- Font size & Optical boost -->
+      <div class="flex items-center gap-1 font-mono text-[11px]">
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, fontSize: Math.max(12, s.fontSize - 1) }))}
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-800 font-bold cursor-pointer"
+          title="Decrease font size"
+        >-</button>
+        <span class="px-1">{$settings.fontSize}px</span>
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, fontSize: Math.min(24, s.fontSize + 1) }))}
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-800 font-bold cursor-pointer"
+          title="Increase font size"
+        >+</button>
+        <button
+          type="button"
+          on:click={() => settings.update(s => ({ ...s, targetOpticalBoost: !s.targetOpticalBoost }))}
+          class="px-1.5 py-0.5 rounded text-[10px] transition-colors ml-1 cursor-pointer {$settings.targetOpticalBoost ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold' : 'text-gray-400 hover:text-gray-600'}"
+          title="Optical Font Boost (+2px for non-Latin / RTL scripts)"
+        >
+          Optical +2
+        </button>
+      </div>
+
+      <span class="text-gray-300 dark:text-gray-700">|</span>
+
+      <!-- WAL Sync Status -->
+      <div class="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400" title="SQLite WAL mode active">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>WAL Synced</span>
+      </div>
+    </div>
   </div>
 </div>
 

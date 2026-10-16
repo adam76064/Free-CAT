@@ -162,3 +162,133 @@ async fn call_openai(config: &AiConfig, system: &str, user: &str) -> Result<AiRe
         model: model.to_string(),
     })
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextSegment {
+    pub seq_number: i64,
+    pub source_text: String,
+    pub target_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentAiRequest {
+    pub current_source: String,
+    pub current_target: Option<String>,
+    pub preceding_segments: Vec<ContextSegment>,
+    pub following_segments: Vec<ContextSegment>,
+    pub termbase_matches: Vec<(String, String)>,
+    pub style_guide: Option<String>,
+    pub action: String, // "translate", "rephrase", "condense", "tone_formal", "tone_casual", "fix_grammar"
+    pub selected_text: Option<String>,
+    pub src_lang: String,
+    pub tgt_lang: String,
+    pub config: AiConfig,
+}
+
+/// Context-aware document agent query supporting 5-segment sliding window, glossary injection, and style guide
+pub async fn query_document_ai(req: DocumentAiRequest) -> Result<AiResponse, String> {
+    let system_prompt = "You are Free-CAT's elite computational linguist and professional translator. \
+You maintain perfect discourse cohesion, correct cross-sentence pronouns and references, enforce the mandatory project termbase glossary, \
+and produce natural, native-sounding translations. Output only the requested translation or refinement without conversational filler.";
+
+    let mut parts = Vec::new();
+
+    // 1. Preceding Discourse Context
+    if !req.preceding_segments.is_empty() {
+        parts.push("=== PRECEDING DISCOURSE CONTEXT ===".to_string());
+        for s in &req.preceding_segments {
+            parts.push(format!(
+                "#{}: [{}] \"{}\" -> [{}] \"{}\"",
+                s.seq_number,
+                req.src_lang,
+                s.source_text,
+                req.tgt_lang,
+                s.target_text.as_deref().unwrap_or("[untranslated]")
+            ));
+        }
+        parts.push("".to_string());
+    }
+
+    // 2. Following Discourse Preview
+    if !req.following_segments.is_empty() {
+        parts.push("=== UPCOMING DISCOURSE PREVIEW ===".to_string());
+        for s in &req.following_segments {
+            parts.push(format!("#{}: [{}] \"{}\"", s.seq_number, req.src_lang, s.source_text));
+        }
+        parts.push("".to_string());
+    }
+
+    // 3. Mandatory Project Terminology
+    if !req.termbase_matches.is_empty() {
+        parts.push("=== MANDATORY PROJECT GLOSSARY ===".to_string());
+        for (src_t, tgt_t) in &req.termbase_matches {
+            parts.push(format!("* \"{}\" => \"{}\"", src_t, tgt_t));
+        }
+        parts.push("".to_string());
+    }
+
+    // 4. Style Guide Guidelines
+    if let Some(sg) = &req.style_guide {
+        if !sg.trim().is_empty() {
+            parts.push(format!("=== STYLE GUIDE GUIDELINES ===\n{}\n", sg));
+        }
+    }
+
+    // 5. Current Segment
+    parts.push("=== CURRENT TARGET SEGMENT ===".to_string());
+    parts.push(format!("Source ({}): \"{}\"", req.src_lang, req.current_source));
+    if let Some(tgt) = &req.current_target {
+        if !tgt.trim().is_empty() {
+            parts.push(format!("Current Target ({}): \"{}\"", req.tgt_lang, tgt));
+        }
+    }
+
+    let instruction = match req.action.as_str() {
+        "rephrase" => {
+            if let Some(sel) = &req.selected_text {
+                format!("Provide 3 polished, natural alternative translations for the selected text: \"{}\". Number them 1., 2., 3.", sel)
+            } else {
+                "Provide 3 polished, natural alternative translations for this target segment. Number them 1., 2., 3.".to_string()
+            }
+        }
+        "condense" => {
+            if let Some(sel) = &req.selected_text {
+                format!("Condense and shorten the selected text \"{}\" to be succinct while retaining full meaning.", sel)
+            } else {
+                "Condense and shorten the translation to be succinct while preserving full meaning.".to_string()
+            }
+        }
+        "tone_formal" => {
+            if let Some(sel) = &req.selected_text {
+                format!("Rewrite the selected text \"{}\" in an elevated, formal, authoritative professional register.", sel)
+            } else {
+                "Rewrite the translation in an elevated, formal, authoritative professional register.".to_string()
+            }
+        }
+        "tone_casual" => {
+            if let Some(sel) = &req.selected_text {
+                format!("Rewrite the selected text \"{}\" in a natural, friendly, accessible contemporary tone.", sel)
+            } else {
+                "Rewrite the translation in a natural, friendly, accessible contemporary tone.".to_string()
+            }
+        }
+        "fix_grammar" => {
+            if let Some(sel) = &req.selected_text {
+                format!("Correct any grammatical, typographical, or stylistic errors in the selected text: \"{}\". Return only the corrected version.", sel)
+            } else {
+                "Correct any grammatical, typographical, agreement, or punctuation errors in this translation. Return only the corrected translation.".to_string()
+            }
+        }
+        _ => {
+            format!("Translate the source sentence accurately into fluent, natural {}. Output ONLY the direct translation without any explanation or quotes.", req.tgt_lang)
+        }
+    };
+
+    parts.push(format!("\n=== TASK ===\n{}", instruction));
+    let user_message = parts.join("\n");
+
+    match req.config.provider.as_str() {
+        "openai" => call_openai(&req.config, system_prompt, &user_message).await,
+        _ => call_ollama(&req.config, system_prompt, &user_message).await,
+    }
+}

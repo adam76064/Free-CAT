@@ -64,3 +64,7 @@ export async function getSegmentHistory(segment_id: string): Promise<SegmentHist
   return invoke('get_segment_history', { segmentId: segment_id });
 }
 
+export async function getCombinedSegments(file_ids: string[]): Promise<Segment[]> {
+  return invoke('get_combined_segments', { fileIds: file_ids });
+}
+

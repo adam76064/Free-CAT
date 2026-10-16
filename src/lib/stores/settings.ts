@@ -14,6 +14,12 @@ export interface UserSettings {
   libretranslate_url: string;
   google_translate_key: string;
   ollama_url: string;
+  layoutMode: 'side-by-side' | 'stacked' | 'zen';
+  sourceRatio: number;          // percent (default 50)
+  inspectorWidth: number;       // px (default 340)
+  targetOpticalBoost: boolean;  // +2px font size for target non-Latin scripts
+  spellcheckEnabled: boolean;   // offline spellchecking & linter
+  revisionMode: boolean;        // track changes redline revision mode
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -26,6 +32,12 @@ const DEFAULT_SETTINGS: UserSettings = {
   libretranslate_url: 'http://localhost:5000',
   google_translate_key: '',
   ollama_url: 'http://localhost:11434',
+  layoutMode: 'side-by-side',
+  sourceRatio: 50,
+  inspectorWidth: 340,
+  targetOpticalBoost: false,
+  spellcheckEnabled: true,
+  revisionMode: false,
 };
 
 function createSettingsStore() {

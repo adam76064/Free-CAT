@@ -9,4 +9,5 @@ pub mod mt;
 pub mod file_io;
 pub mod ai;
 pub mod aligner;
+pub mod tqa;
 

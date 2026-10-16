@@ -34,14 +34,16 @@
                    ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 font-medium'
                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
         >
-          <span class="truncate mr-2">{item.text}</span>
+          <span class="truncate mr-2">{item.displayText || item.text}</span>
           <span
             class="text-[9px] px-1 py-0.5 rounded font-mono uppercase font-semibold
                    {item.source === 'termbase'
                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                     : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'}"
+                     : item.source === 'autotext'
+                       ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                       : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'}"
           >
-            {item.source === 'termbase' ? 'TB' : 'TM'}
+            {item.source === 'termbase' ? 'TB' : item.source === 'autotext' ? '⚡ SNIP' : 'TM'}
           </span>
         </div>
       {/each}

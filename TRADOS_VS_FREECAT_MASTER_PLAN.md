@@ -176,13 +176,29 @@ In Mats Linder's manual (*Chapter 26: The Editor View, Pages 16–18*), Trados S
 - [x] Implement single TU deletion and batch Find & Replace across the entire TM database with target-only option.
 - [x] Add unit test `test_tm_maintenance_operations` (100% passing).
  
+### Phase 7: Pre-Flight Simulation, Quality Assessment & Ergonomics
+- [x] **In-Place Source Editing (<kbd>Alt+F2</kbd>)**: Edit source text directly with SQLite audit history tracking (`action: 'source_edit'`).
+- [x] **QuickInsert Typographic Strip**: 1-click access to non-breaking spaces (NBSP, NNBSP, ZWSP), typographic dashes (—, –), guillemets («», ‹›), quotes, currency, and BiDi marks (<kbd>Ctrl+Shift+I</kbd>).
+- [x] **Pseudo-Translation Engine**: Diacritics expansion slider (+0% to +100%), bracket encapsulation `[~ ... ~]`, and 100% tag preservation (`test_expansion_length`, `test_tag_preservation` passing).
+- [x] **Interactive DQF-MQM TQA Framework**: TAUS DQF-MQM penalty scorecard ($\ge 95\%$ PASS threshold, Minor: -1, Major: -5, Critical: -25) with SQLite persistence and dedicated drawer.
+- [x] **Virtual Multi-File QuickMerge Dividers**: Visual document boundary banners separating files in virtual multi-file editing sessions.
+- [x] **Ergonomic Shortcuts**: Case cycling (<kbd>Shift+F3</kbd>), Clear target (<kbd>Alt+Delete</kbd>), Copy source (<kbd>Ctrl+Shift+S</kbd>).
+
+### Phase 8: Deep Localization Workflow Power-Tools
+- [x] **AutoText Shorthand & Snippet Engine**: Persistent abbreviation dictionary (`w/o` -> `without`, `asap` -> `as soon as possible`, `t&c` -> `terms and conditions`), AutoSuggest integration with `⚡ SNIP` badge, space-trigger expansion, and dedicated manager modal.
+- [x] **Web Lookup! & Concordance Omnibar (<kbd>Ctrl+F8</kbd> / <kbd>Alt+W</kbd>)**: 1-click external concordance across 9 reference portals (DeepL, Google, Linguee, ProZ KudoZ, IATE, WordReference, Wikipedia, Wiktionary).
+- [x] **Text-to-Speech (TTS) Acoustic Proofreader (<kbd>Ctrl+Alt+R</kbd>)**: Native speech synthesis review with speed control and continuous auto-advancing read-through mode.
+- [x] **Batch Segment Operations**: Copy All Source to Empty Targets (<kbd>Alt+Shift+Insert</kbd>), Clear Draft Targets (<kbd>Alt+Shift+Delete</kbd>), Batch Lock Confirmed/100%, and Unlock All.
+- [x] **Live Character/Word Metrics & Expansion Gauges**: Per-segment word/character counts with visual expansion warning pills (amber for >35%, red for >60%).
+- [x] **Bookmark Jump Navigation & Focus Toggling**: Jump to next bookmark (<kbd>F2</kbd>), previous bookmark (<kbd>Shift+F2</kbd>), toggle bookmark (<kbd>Ctrl+Shift+B</kbd>), and toggle Source/Target focus (<kbd>F6</kbd>).
+
 ---
  
 ## 6. Verification & Quality Gates Results
  
-1. **Binary Size**: **9.14 MB** (Target strictly **< 15.0 MB** — **PASSED**, 39% under maximum threshold).
-2. **Zero Regressions**: All 42 unit tests passing (`cargo test --lib` -> 42 passed, 0 failed).
+1. **Binary Size**: **9.22 MB** (Target strictly **< 15.0 MB** — **PASSED**, 38.5% under maximum threshold).
+2. **Zero Regressions**: All 45 unit tests passing (`cargo test --lib` -> 45 passed, 0 failed).
 3. **Frontend Diagnostics**: 0 errors (`npm run check` -> 0 errors, full TypeScript type safety).
 4. **Production Build**: `npm run build` -> static site generated to `dist` cleanly.
 5. **100% Offline Autonomy**: Zero cloud or server dependencies required for core functionality.
-6. **Git Tag**: `checkpoint-enterprise-studio-v3` (Commit `b823084`).
+6. **Git Tag**: `checkpoint-enterprise-studio-v4` (Phase 7 & 8 complete).

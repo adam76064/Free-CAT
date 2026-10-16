@@ -120,6 +120,24 @@ pub async fn update_segment(
 }
 
 #[derive(serde::Deserialize)]
+pub struct EditSourceSegmentArgs {
+    pub segment_id: String,
+    pub source_text: String,
+}
+
+/// Edit the source segment text in-place (Alt+F2).
+#[tauri::command]
+pub async fn edit_source_segment(
+    args: EditSourceSegmentArgs,
+    state: State<'_, AppState>,
+) -> Result<Segment, String> {
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let db = state.project_db.lock().unwrap();
+    db.update_segment_source(&args.segment_id, &args.source_text, &now)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
 pub struct ConfirmSegmentArgs {
     pub segment_id:   String,
     pub target_text:  String,

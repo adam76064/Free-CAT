@@ -13,7 +13,7 @@
   } from '$lib/stores/segments';
   import { tmMatches, tmLoading } from '$lib/stores/tm';
   import { termMatches, tbLoading } from '$lib/stores/termbase';
-  import { currentProject, currentFile, projectSettings } from '$lib/stores/project';
+  import { currentProject, currentFile, currentFiles, projectSettings } from '$lib/stores/project';
   import { qaResults, qaErrors } from '$lib/stores/qa';
   import SegmentRow from './SegmentRow.svelte';
   import FindReplaceBar from './FindReplaceBar.svelte';
@@ -28,10 +28,16 @@
   import AdvancedDisplayFilterPanel from './AdvancedDisplayFilterPanel.svelte';
   import ConcordanceModal from './ConcordanceModal.svelte';
   import CommandPalette from './CommandPalette.svelte';
+  import QuickInsertBar from './QuickInsertBar.svelte';
+  import PseudoTranslateModal from './PseudoTranslateModal.svelte';
+  import TqaDrawer from './TqaDrawer.svelte';
+  import AutoTextManagerModal from './AutoTextManagerModal.svelte';
+  import WebLookupModal from './WebLookupModal.svelte';
+  import { autoTextEntries } from '$lib/stores/autotext';
   import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
   import { queryTb } from '$lib/ipc/termbase';
-  import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark, toggleSegmentLock } from '$lib/ipc/segment';
+  import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark, toggleSegmentLock, editSourceSegment } from '$lib/ipc/segment';
   import { settings } from '$lib/stores/settings';
   import { advancedFilter } from '$lib/stores/segments';
   import { runQa, preTranslate, exportBilingualReview, importBilingualReview } from '$lib/ipc/project';
@@ -48,6 +54,17 @@
   let isQuoteInvoiceOpen = false;
   let isAdvancedFilterOpen = false;
   let isConcordanceOpen = false;
+  let isQuickInsertOpen = true;
+  let isPseudoTranslateOpen = false;
+  let isTqaOpen = false;
+  let isAutoTextOpen = false;
+  let isWebLookupOpen = false;
+  let webLookupQuery = '';
+  let isTtsPlaying = false;
+  let isTtsContinuous = false;
+  let ttsRate = 1.0;
+  let focusIsOnSource = false;
+  let tqaDrawerComponent: TqaDrawer;
   let concordanceInitialQuery = '';
   let pretranslating = false;
   let isToolsMenuOpen = false;
@@ -172,6 +189,14 @@
         }
       }
     }
+    for (const at of $autoTextEntries) {
+      suggestTrie.insert(at.trigger, {
+        text: at.expansion,
+        source: 'autotext',
+        matchScore: 100,
+        displayText: `${at.trigger} ➔ ${at.expansion}`,
+      });
+    }
   }
 
   function handleQuerySuggestions(word: string) {
@@ -186,9 +211,184 @@
   let segmentToSplit: Segment | null = null;
   let splitSliderPos = 1;
 
-  // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K, Ctrl+L)
+  // Text-to-Speech (TTS) Acoustic Proofreading
+  function stopTts() {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    isTtsPlaying = false;
+  }
+
+  function speakText(text: string, lang: string, onEnd?: () => void) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    if (!text.trim()) {
+      isTtsPlaying = false;
+      return;
+    }
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = ttsRate;
+    utter.lang = lang || 'en';
+
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      const matched = voices.find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2)));
+      if (matched) utter.voice = matched;
+    } catch (e) {
+      /* ignore */
+    }
+
+    utter.onend = () => {
+      isTtsPlaying = false;
+      if (onEnd) onEnd();
+    };
+    utter.onerror = () => {
+      isTtsPlaying = false;
+    };
+
+    isTtsPlaying = true;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function toggleTtsPlayback() {
+    if (isTtsPlaying) {
+      stopTts();
+      return;
+    }
+    playCurrentSegmentTts();
+  }
+
+  function playCurrentSegmentTts() {
+    const seg = $selectedSegment;
+    if (!seg) return;
+    const textToRead = seg.target_text.trim() || seg.source_text.trim();
+    const lang = seg.target_text.trim() ? ($currentProject?.tgt_lang || 'en') : ($currentProject?.src_lang || 'en');
+
+    speakText(textToRead, lang, () => {
+      if (isTtsContinuous && $selectedIndex < $filteredSegments.length - 1) {
+        selectedIndex.update(i => i + 1);
+        scrollToSelected();
+        setTimeout(() => {
+          if (isTtsContinuous) playCurrentSegmentTts();
+        }, 300);
+      }
+    });
+  }
+
+  // Bookmark Jump Navigation (F2 / Shift+F2)
+  function jumpToNextBookmark() {
+    const list = $filteredSegments;
+    if (list.length === 0) return;
+    const startIdx = $selectedIndex;
+    for (let offset = 1; offset <= list.length; offset++) {
+      const idx = (startIdx + offset) % list.length;
+      if (list[idx].bookmarked) {
+        selectedIndex.set(idx);
+        scrollToSelected();
+        return;
+      }
+    }
+  }
+
+  function jumpToPrevBookmark() {
+    const list = $filteredSegments;
+    if (list.length === 0) return;
+    const startIdx = $selectedIndex;
+    for (let offset = 1; offset <= list.length; offset++) {
+      const idx = (startIdx - offset + list.length) % list.length;
+      if (list[idx].bookmarked) {
+        selectedIndex.set(idx);
+        scrollToSelected();
+        return;
+      }
+    }
+  }
+
+  // Toggle Source / Target Focus (F6)
+  function toggleSourceTargetFocus() {
+    focusIsOnSource = !focusIsOnSource;
+    const activeRowEl = gridContainer?.querySelector('[aria-selected="true"]');
+    if (!activeRowEl) return;
+    if (focusIsOnSource) {
+      const editSourceBtn = activeRowEl.querySelector('button[title*="Edit Source"]') as HTMLButtonElement;
+      editSourceBtn?.click();
+    } else {
+      const targetBox = activeRowEl.querySelector('[role="textbox"]') as HTMLElement;
+      targetBox?.focus();
+    }
+  }
+
+  // Batch Segment Operations
+  async function handleBatchCopySourceToEmptyTarget() {
+    if (!$currentProject || !$currentFile) return;
+    let count = 0;
+    for (const seg of $segments) {
+      if (!seg.target_text.trim() && !seg.locked) {
+        updateSegmentInStore(seg.id, {
+          target_text: seg.source_text,
+          status: 'draft',
+        });
+        await updateSegment({
+          segment_id: seg.id,
+          target_text: seg.source_text,
+          status: 'draft',
+        });
+        count++;
+      }
+    }
+    alert(`Batch Copy Source: ${count} empty segments filled with source text.`);
+  }
+
+  async function handleBatchClearDraftTargets() {
+    if (!$currentProject || !$currentFile) return;
+    let count = 0;
+    for (const seg of $segments) {
+      if (seg.status === 'draft' && !seg.locked) {
+        updateSegmentInStore(seg.id, {
+          target_text: '',
+          status: 'new',
+        });
+        await updateSegment({
+          segment_id: seg.id,
+          target_text: '',
+          status: 'new',
+        });
+        count++;
+      }
+    }
+    alert(`Batch Clear: ${count} draft segments cleared.`);
+  }
+
+  async function handleBatchLockConfirmed() {
+    if (!$currentProject || !$currentFile) return;
+    let count = 0;
+    for (const seg of $segments) {
+      if ((seg.status === 'translated' || seg.match_percent === 100) && !seg.locked) {
+        await toggleSegmentLock(seg.id);
+        updateSegmentInStore(seg.id, { locked: true });
+        count++;
+      }
+    }
+    alert(`Batch Lock: ${count} confirmed/100% segments locked.`);
+  }
+
+  async function handleBatchUnlockAll() {
+    if (!$currentProject || !$currentFile) return;
+    let count = 0;
+    for (const seg of $segments) {
+      if (seg.locked) {
+        await toggleSegmentLock(seg.id);
+        updateSegmentInStore(seg.id, { locked: false });
+        count++;
+      }
+    }
+    alert(`Batch Unlock: ${count} segments unlocked.`);
+  }
+
+  // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K, Ctrl+L, F2, F3, F6, Ctrl+F8, Ctrl+Alt+R)
   function handleWindowKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey) {
       e.preventDefault();
       isFindOpen = true;
       isReplaceOpen = false;
@@ -202,7 +402,7 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       isCommandPaletteOpen = !isCommandPaletteOpen;
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l' && !e.shiftKey) {
       e.preventDefault();
       settings.update(s => {
         const next = s.layoutMode === 'side-by-side' ? 'stacked' : s.layoutMode === 'stacked' ? 'zen' : 'side-by-side';
@@ -213,6 +413,32 @@
       const sel = window.getSelection()?.toString().trim() || '';
       concordanceInitialQuery = sel || ($selectedSegment?.source_text.slice(0, 60) || '');
       isConcordanceOpen = true;
+    } else if ((e.ctrlKey && e.key === 'F8') || (e.altKey && e.key.toLowerCase() === 'w')) {
+      e.preventDefault();
+      const sel = window.getSelection()?.toString().trim() || '';
+      webLookupQuery = sel || ($selectedSegment?.source_text || '');
+      isWebLookupOpen = true;
+    } else if (e.key === 'F2' && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      jumpToNextBookmark();
+    } else if (e.key === 'F2' && e.shiftKey) {
+      e.preventDefault();
+      jumpToPrevBookmark();
+    } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      if ($selectedSegment) handleToggleBookmark($selectedSegment.id);
+    } else if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'r') {
+      e.preventDefault();
+      toggleTtsPlayback();
+    } else if (e.key === 'F6') {
+      e.preventDefault();
+      toggleSourceTargetFocus();
+    } else if (e.altKey && e.shiftKey && (e.key === 'Insert' || e.code === 'Insert')) {
+      e.preventDefault();
+      handleBatchCopySourceToEmptyTarget();
+    } else if (e.altKey && e.shiftKey && (e.key === 'Delete' || e.code === 'Delete')) {
+      e.preventDefault();
+      handleBatchClearDraftTargets();
     }
   }
 
@@ -228,6 +454,7 @@
   });
 
   onDestroy(() => {
+    stopTts();
     window.removeEventListener('keydown', handleWindowKeydown);
     window.removeEventListener('pointermove', handlePointerMove);
     window.removeEventListener('pointerup', handlePointerUp);
@@ -535,6 +762,47 @@
     }
   }
 
+  async function handleSourceChange(segId: string, newSource: string) {
+    try {
+      const updated = await editSourceSegment({ segment_id: segId, source_text: newSource });
+      updateSegmentInStore(segId, { source_text: updated.source_text });
+    } catch (e: any) {
+      alert(`Failed to update source segment: ${e}`);
+    }
+  }
+
+  function handleQuickInsertChar(e: CustomEvent<string>) {
+    const char = e.detail;
+    const seg = $selectedSegment;
+    if (!seg || seg.locked) return;
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.getAttribute('role') === 'textbox' || activeEl.getAttribute('contenteditable') === 'true')) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && activeEl.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const textNode = document.createTextNode(char);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        const newText = activeEl.textContent || '';
+        handleTargetChange(seg.id, newText);
+        return;
+      }
+    }
+    const current = seg.target_text || '';
+    const newText = current + char;
+    handleTargetChange(seg.id, newText);
+  }
+
+  function getFileName(fileId: string): string | null {
+    if (!$currentFiles || $currentFiles.length <= 1) return null;
+    const f = $currentFiles.find(file => file.id === fileId);
+    return f ? f.filename : null;
+  }
+
   async function handleRunQa() {
     if (!$currentProject || !$currentFile) return;
     try {
@@ -682,6 +950,54 @@
         <span>📖 Concordance</span>
         <kbd class="text-[9px] font-mono text-gray-400">F3</kbd>
       </button>
+
+      <!-- QuickInsert Typographic Strip Toggle -->
+      <button
+        type="button"
+        on:click={() => (isQuickInsertOpen = !isQuickInsertOpen)}
+        class="px-2 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1 cursor-pointer
+               {isQuickInsertOpen
+                 ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
+                 : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
+        title="Toggle QuickInsert Typographic Bar (Ctrl+Shift+I)"
+      >
+        <span>⚡ QuickInsert</span>
+      </button>
+
+      <!-- Translation Quality Assessment (TQA) -->
+      <button
+        type="button"
+        on:click={() => (isTqaOpen = true)}
+        class="px-2 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
+        title="Translation Quality Assessment (TAUS DQF-MQM Framework)"
+      >
+        <span>🛡️ TQA</span>
+      </button>
+
+      <!-- Web Lookup! (Ctrl+F8 / Alt+W) -->
+      <button
+        type="button"
+        on:click={() => {
+          const sel = window.getSelection()?.toString().trim() || '';
+          webLookupQuery = sel || ($selectedSegment?.source_text.slice(0, 80) || '');
+          isWebLookupOpen = true;
+        }}
+        class="px-2 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
+        title="Web Lookup! Concordance & Dictionaries (Ctrl+F8 / Alt+W)"
+      >
+        <span>🌐 Web Lookup</span>
+      </button>
+
+      <!-- Text-to-Speech Acoustic Proofreader (Ctrl+Alt+R) -->
+      <button
+        type="button"
+        on:click={toggleTtsPlayback}
+        class="px-2 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1 cursor-pointer
+               {isTtsPlaying ? 'bg-purple-600 text-white border-purple-700 animate-pulse' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
+        title="Text-to-Speech Acoustic Proofreading (Ctrl+Alt+R)"
+      >
+        <span>{isTtsPlaying ? '⏸ Stop' : '🔊 Proofread'}</span>
+      </button>
     </div>
 
     <!-- Right: Tools Dropdown + Actions + Inspector + Preview + Progress -->
@@ -783,6 +1099,93 @@
                 <div class="text-[10px] text-gray-400">Apply reviewer edits & track changes</div>
               </div>
             </button>
+
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; isPseudoTranslateOpen = true; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-pink-500 text-base">🧪</span>
+              <div>
+                <div class="font-medium">Pseudo-Translation Simulation</div>
+                <div class="text-[10px] text-gray-400">Pre-flight DTP expansion & diacritics test</div>
+              </div>
+            </button>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; isTqaOpen = true; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-emerald-500 text-base">🛡️</span>
+              <div>
+                <div class="font-medium">Translation Quality Assessment (TQA)</div>
+                <div class="text-[10px] text-gray-400">TAUS DQF / MQM scorecard evaluation</div>
+              </div>
+            </button>
+
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; isAutoTextOpen = true; }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-amber-500 text-base">⚡</span>
+              <div>
+                <div class="font-medium">AutoText Shorthand Dictionary</div>
+                <div class="text-[10px] text-gray-400">Configure rapid abbreviations</div>
+              </div>
+            </button>
+
+            <button
+              on:click={() => {
+                isToolsMenuOpen = false;
+                const sel = window.getSelection()?.toString().trim() || '';
+                webLookupQuery = sel || ($selectedSegment?.source_text.slice(0, 80) || '');
+                isWebLookupOpen = true;
+              }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-cyan-500 text-base">🌐</span>
+              <div>
+                <div class="font-medium">Web Lookup! Concordance</div>
+                <div class="text-[10px] text-gray-400">IATE, Linguee, DeepL, ProZ (Alt+W)</div>
+              </div>
+            </button>
+
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleBatchCopySourceToEmptyTarget(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
+            >
+              <span class="flex items-center gap-2.5"><span class="text-blue-500">📋</span> Copy All Source to Empty Targets</span>
+              <kbd class="text-[9px] font-mono text-gray-400">Alt+Shift+Ins</kbd>
+            </button>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleBatchClearDraftTargets(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
+            >
+              <span class="flex items-center gap-2.5"><span class="text-red-500">🧹</span> Clear Draft Targets</span>
+              <kbd class="text-[9px] font-mono text-gray-400">Alt+Shift+Del</kbd>
+            </button>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleBatchLockConfirmed(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-rose-500">🔒</span>
+              <span>Lock Confirmed / 100% Matches</span>
+            </button>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleBatchUnlockAll(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-emerald-500">🔓</span>
+              <span>Unlock All Segments</span>
+            </button>
           </div>
         {/if}
       </div>
@@ -863,6 +1266,14 @@
     />
   {/if}
 
+  <!-- QuickInsert Typographic Strip -->
+  {#if isQuickInsertOpen}
+    <QuickInsertBar
+      on:insert={handleQuickInsertChar}
+      on:close={() => (isQuickInsertOpen = false)}
+    />
+  {/if}
+
   <!-- Grid + right panel -->
   <div class="flex flex-1 overflow-hidden">
 
@@ -913,6 +1324,22 @@
         </div>
       {:else}
         {#each $filteredSegments as segment, i (segment.id)}
+          {#if (i === 0 || segment.file_id !== $filteredSegments[i - 1].file_id) && getFileName(segment.file_id)}
+            <!-- Multi-File Virtual Document File Divider Banner -->
+            <div class="px-3.5 py-1.5 bg-gradient-to-r from-brand-50 via-gray-50 to-white dark:from-brand-950/60 dark:via-gray-900 dark:to-gray-950 border-y border-brand-200 dark:border-brand-900/80 flex items-center justify-between text-xs select-none sticky top-[33px] z-10 shadow-2xs">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">📄</span>
+                <span class="font-bold text-gray-900 dark:text-white font-mono">{getFileName(segment.file_id)}</span>
+                <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-brand-100 dark:bg-brand-900/60 text-brand-800 dark:text-brand-300 font-semibold uppercase tracking-wider">
+                  Document Section
+                </span>
+              </div>
+              <div class="text-[10px] text-gray-400 font-mono">
+                ID: {segment.file_id.slice(0, 8)}…
+              </div>
+            </div>
+          {/if}
+
           <SegmentRow
             {segment}
             isSelected={i === $selectedIndex}
@@ -925,6 +1352,7 @@
             onSelect={() => selectedIndex.set(i)}
             onConfirm={handleConfirm}
             onTargetChange={handleTargetChange}
+            onSourceChange={handleSourceChange}
             onSplit={openSplitModal}
             onMergeNext={handleMergeNext}
             onMergePrev={handleMergePrev}
@@ -1058,6 +1486,35 @@
       <span class="text-gray-600 dark:text-gray-400 text-[11px]">
         Active: <strong class="text-gray-900 dark:text-gray-100">{activeSegSrcWords}</strong> src words ({activeSegSrcChars} chars) ➔ <strong class="text-gray-900 dark:text-gray-100">{activeSegTgtWords}</strong> tgt words
       </span>
+      <span class="text-gray-300 dark:text-gray-700">|</span>
+      <!-- Acoustic Proofreader Controls -->
+      <div class="flex items-center gap-1.5 text-[11px]">
+        <button
+          type="button"
+          on:click={toggleTtsPlayback}
+          class="px-2 py-0.5 rounded font-semibold transition-colors flex items-center gap-1 cursor-pointer
+                 {isTtsPlaying ? 'bg-purple-600 text-white animate-pulse' : 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300'}"
+          title="Text-to-Speech Acoustic Proofreading (Ctrl+Alt+R)"
+        >
+          <span>{isTtsPlaying ? '⏸ Stop' : '🔊 Listen'}</span>
+        </button>
+        <button
+          type="button"
+          on:click={() => (isTtsContinuous = !isTtsContinuous)}
+          class="px-1.5 py-0.5 rounded text-[10px] cursor-pointer {isTtsContinuous ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold' : 'text-gray-400 hover:text-gray-600'}"
+          title="Auto-read next segment continuously"
+        >
+          Continuous: {isTtsContinuous ? 'ON' : 'OFF'}
+        </button>
+        <button
+          type="button"
+          on:click={() => { ttsRate = ttsRate === 1.0 ? 1.2 : ttsRate === 1.2 ? 1.5 : 1.0; }}
+          class="px-1 py-0.5 rounded text-[10px] font-mono text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
+          title="Playback speed"
+        >
+          {ttsRate}x
+        </button>
+      </div>
     </div>
 
     <!-- Right: Revision Mode, Layout Switcher, Zoom, WAL Sync -->
@@ -1233,4 +1690,34 @@
   initialQuery={concordanceInitialQuery}
   onInsert={handleInsertConcordance}
   onClose={() => (isConcordanceOpen = false)}
+/>
+
+<PseudoTranslateModal
+  isOpen={isPseudoTranslateOpen}
+  on:close={() => (isPseudoTranslateOpen = false)}
+  on:applied={async () => {
+    if ($currentFile && $currentProject) {
+      const fresh = await getSegments($currentFile.id, $currentProject.id);
+      segments.set(fresh);
+    }
+  }}
+/>
+
+<TqaDrawer
+  bind:this={tqaDrawerComponent}
+  isOpen={isTqaOpen}
+  on:close={() => (isTqaOpen = false)}
+/>
+
+<AutoTextManagerModal
+  isOpen={isAutoTextOpen}
+  on:close={() => (isAutoTextOpen = false)}
+/>
+
+<WebLookupModal
+  isOpen={isWebLookupOpen}
+  initialQuery={webLookupQuery}
+  srcLang={$currentProject?.src_lang || 'en'}
+  tgtLang={$currentProject?.tgt_lang || 'es'}
+  on:close={() => (isWebLookupOpen = false)}
 />

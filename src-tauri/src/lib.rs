@@ -65,6 +65,7 @@ pub fn run() {
             commands::segment::update_segment_comment,
             commands::segment::get_segment_history,
             commands::segment::get_combined_segments,
+            commands::segment::edit_source_segment,
             // TM commands
             commands::tm::query_tm,
             commands::tm::query_fragments,
@@ -100,6 +101,12 @@ pub fn run() {
             commands::analysis::get_analysis_report,
             commands::analysis::get_detailed_analysis,
             commands::analysis::pre_translate,
+            commands::analysis::pseudotranslate_file,
+            // TQA (Translation Quality Assessment) commands
+            commands::tqa::add_tqa_error,
+            commands::tqa::delete_tqa_error,
+            commands::tqa::get_segment_tqa_errors,
+            commands::tqa::get_tqa_scorecard,
             // MT commands
             commands::mt::get_mt_suggestion,
             // File import/export commands

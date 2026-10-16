@@ -72,3 +72,10 @@ export async function getCombinedSegments(file_ids: string[]): Promise<Segment[]
   return invoke('get_combined_segments', { fileIds: file_ids });
 }
 
+export async function editSourceSegment(args: {
+  segment_id: string;
+  source_text: string;
+}): Promise<Segment> {
+  return invoke('edit_source_segment', { args });
+}
+

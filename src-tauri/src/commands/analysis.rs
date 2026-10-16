@@ -375,6 +375,72 @@ pub async fn get_detailed_analysis(
     })
 }
 
+#[derive(serde::Deserialize)]
+pub struct PseudoTranslateArgs {
+    pub file_id: String,
+    pub expansion_pct: Option<u32>,
+    pub add_brackets: Option<bool>,
+    pub use_diacritics: Option<bool>,
+    pub overwrite_confirmed: Option<bool>,
+}
+
+#[derive(serde::Serialize)]
+pub struct PseudoTranslateResult {
+    pub segments_transformed: usize,
+    pub total_words: usize,
+}
+
+/// Run pseudo-translation simulation on a file to test DTP expansion and diacritics.
+#[tauri::command]
+pub async fn pseudotranslate_file(
+    args: PseudoTranslateArgs,
+    state: State<'_, AppState>,
+) -> Result<PseudoTranslateResult, String> {
+    use crate::core::analysis::pseudotranslate::{pseudotranslate_text, PseudoTranslateOptions};
+
+    let opts = PseudoTranslateOptions {
+        expansion_pct: args.expansion_pct.unwrap_or(30),
+        add_brackets: args.add_brackets.unwrap_or(true),
+        use_diacritics: args.use_diacritics.unwrap_or(true),
+    };
+    let overwrite = args.overwrite_confirmed.unwrap_or(false);
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let db = state.project_db.lock().unwrap();
+    let segments = db.get_segments_for_file(&args.file_id)
+        .map_err(|e| e.to_string())?;
+
+    let mut transformed_count = 0;
+    let mut total_words = 0;
+
+    for seg in segments {
+        if !overwrite && (seg.status == SegmentStatus::Translated || seg.status == SegmentStatus::Reviewed || seg.status == SegmentStatus::Final) {
+            continue;
+        }
+        if seg.locked {
+            continue;
+        }
+
+        let pseudo = pseudotranslate_text(&seg.source_text, &opts);
+        total_words += count_words(&seg.source_text);
+        transformed_count += 1;
+
+        db.update_segment_full(
+            &seg.id,
+            &pseudo,
+            &SegmentStatus::Draft,
+            Some(100),
+            Some("pseudo_translation"),
+            &now,
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(PseudoTranslateResult {
+        segments_transformed: transformed_count,
+        total_words,
+    })
+}
+
 fn count_words(text: &str) -> usize {
     text.split_whitespace().count()
 }

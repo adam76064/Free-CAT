@@ -177,4 +177,19 @@ export async function importBilingualReview(args: {
   });
 }
 
+export interface PseudoTranslateResult {
+  segments_transformed: number;
+  total_words: number;
+}
+
+export async function pseudotranslateFile(args: {
+  file_id: string;
+  expansion_pct?: number;
+  add_brackets?: boolean;
+  use_diacritics?: boolean;
+  overwrite_confirmed?: boolean;
+}): Promise<PseudoTranslateResult> {
+  return invoke('pseudotranslate_file', { args });
+}
+
 

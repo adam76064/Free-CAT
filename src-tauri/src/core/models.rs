@@ -217,3 +217,32 @@ pub struct AnalysisReport {
     pub new_segments:   i64,
     pub tm_savings_pct: f64,
 }
+
+// ── TQA (Translation Quality Assessment / DQF-MQM) ───────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TqaError {
+    pub id:          Option<i64>,
+    pub project_id:  String,
+    pub segment_id:  String,
+    pub category:    String, // "accuracy" | "fluency" | "terminology" | "style" | "design"
+    pub sub_type:    Option<String>,
+    pub severity:    String, // "minor" | "major" | "critical"
+    pub penalty:     i64,    // 1, 5, 25
+    pub comment:     Option<String>,
+    pub created_at:  String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TqaScorecard {
+    pub project_id:     String,
+    pub total_words:    i64,
+    pub total_errors:   i64,
+    pub minor_count:    i64,
+    pub major_count:    i64,
+    pub critical_count: i64,
+    pub total_penalty:  i64,
+    pub score_pct:      f64,
+    pub passed:         bool,
+    pub errors:         Vec<TqaError>,
+}

@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use anyhow::{Context, Result, anyhow};
 use rusqlite::{Connection, params};
-use crate::core::models::{Project, ProjectFile, Segment, SegmentHistory, QaResult, SegmentStatus};
+use crate::core::models::{Project, ProjectFile, Segment, SegmentHistory, QaResult, SegmentStatus, TqaError, TqaScorecard};
 
 pub struct ProjectDb {
     conn: Connection,
@@ -44,6 +44,24 @@ impl ProjectDb {
         if version < 1 {
             self.migrate_v1()?;
         }
+
+        // Ensure TQA tables exist
+        self.conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS tqa_errors (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id  TEXT NOT NULL,
+                segment_id  TEXT NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+                category    TEXT NOT NULL,
+                sub_type    TEXT,
+                severity    TEXT NOT NULL,
+                penalty     INTEGER NOT NULL,
+                comment     TEXT,
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_tqa_project ON tqa_errors(project_id);
+            CREATE INDEX IF NOT EXISTS idx_tqa_segment ON tqa_errors(segment_id);
+        ")?;
+
         Ok(())
     }
 
@@ -273,6 +291,23 @@ impl ProjectDb {
             params![target, status.as_str(), modified_at, id],
         )?;
         Ok(())
+    }
+
+    pub fn update_segment_source(&self, id: &str, new_source: &str, modified_at: &str) -> Result<Segment> {
+        self.conn.execute(
+            "UPDATE segments SET source_text = ?1, modified_at = ?2 WHERE id = ?3",
+            params![new_source, modified_at, id],
+        )?;
+
+        // Record history entry for audit trail
+        let _ = self.conn.execute(
+            "INSERT INTO segment_history (segment_id, target_text, action, actor, timestamp)
+             VALUES (?1, ?2, 'source_edit', 'translator', ?3)",
+            params![id, new_source, modified_at],
+        );
+
+        self.get_segment_by_id(id)?
+            .ok_or_else(|| anyhow!("Segment not found: {}", id))
     }
 
     pub fn update_segment_full(
@@ -606,6 +641,106 @@ impl ProjectDb {
     pub fn clear_qa_results(&self, project_id: &str) -> Result<()> {
         self.conn.execute("DELETE FROM qa_results WHERE project_id = ?1", params![project_id])?;
         Ok(())
+    }
+
+    // ── TQA (Translation Quality Assessment) ──────────────────────────────────
+
+    pub fn insert_tqa_error(&self, err: &TqaError) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO tqa_errors (project_id, segment_id, category, sub_type, severity, penalty, comment, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                err.project_id,
+                err.segment_id,
+                err.category,
+                err.sub_type,
+                err.severity,
+                err.penalty,
+                err.comment,
+                err.created_at
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn delete_tqa_error(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM tqa_errors WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn get_tqa_errors_for_project(&self, project_id: &str) -> Result<Vec<TqaError>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, segment_id, category, sub_type, severity, penalty, comment, created_at
+             FROM tqa_errors WHERE project_id = ?1 ORDER BY id ASC"
+        )?;
+        let rows = stmt.query_map(params![project_id], |row| Ok(TqaError {
+            id:          Some(row.get(0)?),
+            project_id:  row.get(1)?,
+            segment_id:  row.get(2)?,
+            category:    row.get(3)?,
+            sub_type:    row.get(4)?,
+            severity:    row.get(5)?,
+            penalty:     row.get(6)?,
+            comment:     row.get(7)?,
+            created_at:  row.get(8)?,
+        }))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_tqa_errors_for_segment(&self, segment_id: &str) -> Result<Vec<TqaError>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, segment_id, category, sub_type, severity, penalty, comment, created_at
+             FROM tqa_errors WHERE segment_id = ?1 ORDER BY id ASC"
+        )?;
+        let rows = stmt.query_map(params![segment_id], |row| Ok(TqaError {
+            id:          Some(row.get(0)?),
+            project_id:  row.get(1)?,
+            segment_id:  row.get(2)?,
+            category:    row.get(3)?,
+            sub_type:    row.get(4)?,
+            severity:    row.get(5)?,
+            penalty:     row.get(6)?,
+            comment:     row.get(7)?,
+            created_at:  row.get(8)?,
+        }))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_project_tqa_scorecard(&self, project_id: &str, total_words: i64) -> Result<TqaScorecard> {
+        let errors = self.get_tqa_errors_for_project(project_id)?;
+        let mut minor_count = 0;
+        let mut major_count = 0;
+        let mut critical_count = 0;
+        let mut total_penalty = 0;
+
+        for e in &errors {
+            match e.severity.to_lowercase().as_str() {
+                "minor" => minor_count += 1,
+                "major" => major_count += 1,
+                "critical" => critical_count += 1,
+                _ => {}
+            }
+            total_penalty += e.penalty;
+        }
+
+        let words = if total_words > 0 { total_words } else { 100 };
+        // Industry DQF-MQM formula: Score % = max(0, 100 - (penalty / words) * 100)
+        let penalty_ratio = (total_penalty as f64 / words as f64) * 100.0;
+        let score_pct = (100.0 - penalty_ratio).clamp(0.0, 100.0);
+        let passed = score_pct >= 95.0 && critical_count == 0;
+
+        Ok(TqaScorecard {
+            project_id: project_id.to_string(),
+            total_words: words,
+            total_errors: errors.len() as i64,
+            minor_count,
+            major_count,
+            critical_count,
+            total_penalty,
+            score_pct: (score_pct * 10.0).round() / 10.0,
+            passed,
+            errors,
+        })
     }
 }
 

@@ -17,6 +17,7 @@
   import AutoSuggestPopup from './AutoSuggestPopup.svelte';
   import QuickPlaceOmnibar from './QuickPlaceOmnibar.svelte';
   import type { SuggestionItem } from '$lib/utils/suggestTrie';
+  import { autoTextEntries } from '$lib/stores/autotext';
 
   export let segment: Segment;
   export let isSelected: boolean;
@@ -35,8 +36,11 @@
   export let onQuerySuggestions: (word: string) => void = () => {};
   export let onApplyAutoPatch: (patch: string) => void = () => {};
   export let onAiRefineAction: (action: string, selectedText: string) => void = () => {};
+  export let onSourceChange: (id: string, text: string) => void = () => {};
 
   let targetEl: HTMLDivElement;
+  let sourceEditEl: HTMLDivElement;
+  let isSourceEditing = false;
   let suggestVisible = false;
   let activeSuggestIndex = 0;
 
@@ -72,6 +76,50 @@
     range.collapse(false);
     sel?.removeAllRanges();
     sel?.addRange(range);
+  }
+
+  $: srcChars = (segment.source_text || '').length;
+  $: srcWords = (segment.source_text || '').trim().split(/\s+/).filter(Boolean).length;
+  $: tgtChars = (segment.target_text || '').length;
+  $: tgtWords = (segment.target_text || '').trim().split(/\s+/).filter(Boolean).length;
+  $: expansionRatio = srcChars > 0 && tgtChars > 0 ? Math.round(((tgtChars - srcChars) / srcChars) * 100) : 0;
+
+  export function focusTarget() {
+    targetEl?.focus();
+    moveCursorToEnd();
+  }
+
+  export function focusSource() {
+    if (!isSourceEditing) {
+      handleToggleSourceEditing();
+    }
+    setTimeout(() => {
+      sourceEditEl?.focus();
+    }, 40);
+  }
+
+  function handleAutoTextSpace(e: KeyboardEvent): boolean {
+    if (segment.locked || !targetEl) return false;
+    const currentWord = getCurrentWordAtCaret();
+    if (!currentWord) return false;
+
+    const entry = $autoTextEntries.find(at => at.trigger.toLowerCase() === currentWord.toLowerCase());
+    if (entry) {
+      e.preventDefault();
+      const currentFullText = targetEl.textContent || '';
+      const lastIndex = currentFullText.lastIndexOf(currentWord);
+      let newText = currentFullText;
+      if (lastIndex !== -1) {
+        newText = currentFullText.slice(0, lastIndex) + entry.expansion + ' ';
+      } else {
+        newText = currentFullText + ' ' + entry.expansion + ' ';
+      }
+      targetEl.textContent = newText;
+      onTargetChange(segment.id, newText);
+      moveCursorToEnd();
+      return true;
+    }
+    return false;
   }
 
   function getCurrentWordAtCaret(): string {
@@ -185,6 +233,95 @@
     onTargetChange(segment.id, originalTargetText);
   }
 
+  function handleToggleSourceEditing() {
+    isSourceEditing = !isSourceEditing;
+    if (isSourceEditing) {
+      setTimeout(() => {
+        if (sourceEditEl) {
+          sourceEditEl.focus();
+          const range = document.createRange();
+          const sel = window.getSelection();
+          range.selectNodeContents(sourceEditEl);
+          range.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      }, 20);
+    }
+  }
+
+  function handleSaveSource() {
+    if (!sourceEditEl) return;
+    const newText = (sourceEditEl.textContent || '').trim();
+    isSourceEditing = false;
+    if (newText && newText !== segment.source_text) {
+      onSourceChange(segment.id, newText);
+    }
+  }
+
+  function handleCancelSource() {
+    if (sourceEditEl) {
+      sourceEditEl.textContent = segment.source_text;
+    }
+    isSourceEditing = false;
+  }
+
+  function handleCycleCase() {
+    if (segment.locked || !targetEl) return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !targetEl.contains(sel.anchorNode)) return;
+
+    const selectedText = sel.toString();
+    if (selectedText.length > 0) {
+      let nextText = '';
+      if (selectedText === selectedText.toLowerCase()) {
+        nextText = selectedText.toUpperCase();
+      } else if (selectedText === selectedText.toUpperCase()) {
+        nextText = selectedText.replace(/\b\w/g, c => c.toUpperCase());
+      } else {
+        nextText = selectedText.toLowerCase();
+      }
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(nextText);
+      range.insertNode(node);
+      range.selectNodeContents(node);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      const newFullText = targetEl.textContent || '';
+      onTargetChange(segment.id, newFullText);
+    } else {
+      const full = targetEl.textContent || '';
+      const currentWord = getCurrentWordAtCaret();
+      if (currentWord) {
+        let nextWord = '';
+        if (currentWord === currentWord.toLowerCase()) {
+          nextWord = currentWord.toUpperCase();
+        } else if (currentWord === currentWord.toUpperCase()) {
+          nextWord = currentWord.charAt(0).toUpperCase() + currentWord.slice(1).toLowerCase();
+        } else {
+          nextWord = currentWord.toLowerCase();
+        }
+        const lastIdx = full.lastIndexOf(currentWord);
+        if (lastIdx !== -1) {
+          const replaced = full.slice(0, lastIdx) + nextWord + full.slice(lastIdx + currentWord.length);
+          targetEl.textContent = replaced;
+          onTargetChange(segment.id, replaced);
+        }
+      }
+    }
+  }
+
+  function handleSourceKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSaveSource();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelSource();
+    }
+  }
+
   function handleSelectionCheck() {
     if (!isSelected) {
       isAiRefineMenuOpen = false;
@@ -213,11 +350,46 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    // AutoText shorthand expansion on Space
+    if (e.key === ' ' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (handleAutoTextSpace(e)) {
+        return;
+      }
+    }
+
     // QuickPlace Omnibar HUD: Ctrl+, or Cmd+,
     if ((e.ctrlKey || e.metaKey) && e.key === ',') {
       e.preventDefault();
       quickPlaceVisible = !quickPlaceVisible;
       activeQuickPlaceIndex = 0;
+      return;
+    }
+
+    // In-Place Source Segment Editing: Alt+F2
+    if (e.altKey && e.key === 'F2') {
+      e.preventDefault();
+      handleToggleSourceEditing();
+      return;
+    }
+
+    // Case Cycling: Shift+F3 (Word / Trados standard: lowercase -> UPPERCASE -> Title Case)
+    if (e.shiftKey && e.key === 'F3') {
+      e.preventDefault();
+      handleCycleCase();
+      return;
+    }
+
+    // Clear Target: Alt+Delete (Trados standard)
+    if (e.altKey && e.key === 'Delete') {
+      e.preventDefault();
+      handleClearTarget();
+      return;
+    }
+
+    // Copy Source to Target: Ctrl+Shift+S
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      handleCopySource();
       return;
     }
 
@@ -464,6 +636,18 @@
         {#if segment.match_percent !== null && segment.match_percent !== undefined}
           <TmMatchBadge pct={segment.match_percent} />
         {/if}
+        <!-- Segment metrics & expansion ratio gauge -->
+        <div class="mt-1 text-[9px] font-mono text-gray-400 text-center select-none" title="Target: {tgtWords} words, {tgtChars} characters">
+          <span>{tgtWords}w/{tgtChars}c</span>
+          {#if tgtChars > 0 && Math.abs(expansionRatio) >= 20}
+            <div
+              class="text-[8px] font-bold px-1 rounded mt-0.5 {expansionRatio > 40 ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'}"
+              title="Character expansion vs source ({expansionRatio > 0 ? '+' : ''}{expansionRatio}%)"
+            >
+              {expansionRatio > 0 ? '+' : ''}{expansionRatio}%
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -474,13 +658,52 @@
            dir="auto"
            style="font-size: {$settings.fontSize}px;">
         <div class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between select-none">
-          <span>Source ({$currentProject?.src_lang ?? ''})</span>
+          <div class="flex items-center gap-2">
+            <span>Source ({$currentProject?.src_lang ?? ''})</span>
+            {#if isSelected && !isSourceEditing}
+              <button
+                type="button"
+                on:click|stopPropagation={handleToggleSourceEditing}
+                class="text-[10px] px-1 py-0.2 rounded bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                title="Edit Source Text (Alt+F2)"
+              >
+                ✏️ Edit Source (Alt+F2)
+              </button>
+            {/if}
+          </div>
           {#if sourceTags.length > 0}
             <span class="text-[10px] text-amber-600 dark:text-amber-400 font-mono">🏷️ {sourceTags.length} tags</span>
           {/if}
         </div>
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-        {@html renderSource(segment.source_text, highlightedSourceToken)}
+        {#if isSourceEditing}
+          <div class="mb-1.5 p-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-400 dark:border-amber-600 rounded-md">
+            <div class="flex items-center justify-between text-[10px] text-amber-800 dark:text-amber-200 mb-1 font-bold">
+              <span>✏️ EDITING SOURCE SEGMENT</span>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  on:click|stopPropagation={handleSaveSource}
+                  class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] hover:bg-emerald-700 cursor-pointer"
+                >Save (Enter)</button>
+                <button
+                  type="button"
+                  on:click|stopPropagation={handleCancelSource}
+                  class="px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] cursor-pointer"
+                >Cancel (Esc)</button>
+              </div>
+            </div>
+            <div
+              bind:this={sourceEditEl}
+              contenteditable="true"
+              on:keydown={handleSourceKeydown}
+              class="outline-none bg-white dark:bg-gray-800 p-2 rounded text-gray-900 dark:text-white leading-relaxed font-editor text-sm ring-1 ring-amber-400"
+              dir="auto"
+            >{segment.source_text}</div>
+          </div>
+        {:else}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          {@html renderSource(segment.source_text, highlightedSourceToken)}
+        {/if}
       </div>
 
       <!-- Target Panel -->
@@ -647,18 +870,76 @@
         {#if segment.match_percent !== null && segment.match_percent !== undefined}
           <TmMatchBadge pct={segment.match_percent} />
         {/if}
+        <!-- Segment metrics & expansion ratio gauge -->
+        <div class="mt-1 text-[9px] font-mono text-gray-400 text-center select-none" title="Target: {tgtWords} words, {tgtChars} characters">
+          <span>{tgtWords}w/{tgtChars}c</span>
+          {#if tgtChars > 0 && Math.abs(expansionRatio) >= 20}
+            <div
+              class="text-[8px] font-bold px-1 rounded mt-0.5 {expansionRatio > 40 ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'}"
+              title="Character expansion vs source ({expansionRatio > 0 ? '+' : ''}{expansionRatio}%)"
+            >
+              {expansionRatio > 0 ? '+' : ''}{expansionRatio}%
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
 
-    <!-- Source Column (read-only) -->
+    <!-- Source Column -->
     <div
       class="py-2.5 px-3.5 text-sm text-gray-800 dark:text-gray-200 editor-text
-             border-r border-gray-100 dark:border-gray-800 select-text leading-relaxed font-editor"
+             border-r border-gray-100 dark:border-gray-800 select-text leading-relaxed font-editor relative flex flex-col justify-between"
       dir="auto"
       style="font-size: {$settings.fontSize}px;"
     >
-      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      {@html renderSource(segment.source_text, highlightedSourceToken)}
+      <div>
+        {#if isSourceEditing}
+          <div class="mb-1.5 p-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-400 dark:border-amber-600 rounded-md">
+            <div class="flex items-center justify-between text-[10px] text-amber-800 dark:text-amber-200 mb-1 font-bold">
+              <span>✏️ EDITING SOURCE</span>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  on:click|stopPropagation={handleSaveSource}
+                  class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] hover:bg-emerald-700 cursor-pointer"
+                >Save (Enter)</button>
+                <button
+                  type="button"
+                  on:click|stopPropagation={handleCancelSource}
+                  class="px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] cursor-pointer"
+                >Cancel (Esc)</button>
+              </div>
+            </div>
+            <div
+              bind:this={sourceEditEl}
+              contenteditable="true"
+              on:keydown={handleSourceKeydown}
+              class="outline-none bg-white dark:bg-gray-800 p-2 rounded text-gray-900 dark:text-white leading-relaxed font-editor text-sm ring-1 ring-amber-400"
+              dir="auto"
+            >{segment.source_text}</div>
+          </div>
+        {:else}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          {@html renderSource(segment.source_text, highlightedSourceToken)}
+        {/if}
+      </div>
+
+      {#if isSelected && !isSourceEditing}
+        <div class="mt-1 pt-1 border-t border-gray-100 dark:border-gray-800/60 flex items-center justify-between text-[10px] text-gray-400 select-none">
+          <button
+            type="button"
+            on:click|stopPropagation={handleToggleSourceEditing}
+            class="hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+            title="Edit Source Text (Alt+F2)"
+          >
+            <span>✏️ Edit Source</span>
+            <kbd class="text-[9px] font-mono px-1 rounded bg-gray-200 dark:bg-gray-700">Alt+F2</kbd>
+          </button>
+          {#if sourceTags.length > 0}
+            <span class="font-mono text-amber-600 dark:text-amber-400">🏷️ {sourceTags.length} tags</span>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <!-- Target Column (editable) -->

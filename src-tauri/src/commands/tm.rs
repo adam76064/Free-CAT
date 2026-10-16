@@ -366,3 +366,103 @@ pub async fn concordance_search(
     all.truncate(limit);
     Ok(all)
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct PaginatedTusResult {
+    pub tus: Vec<TranslationUnit>,
+    pub total_count: usize,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+/// Paginated query for TM Maintenance Studio.
+#[tauri::command]
+pub async fn get_tm_tus_paginated(
+    tm_id: String,
+    offset: usize,
+    limit: usize,
+    search: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<PaginatedTusResult, String> {
+    let entry = state.tm_index.lock().unwrap()
+        .iter().find(|e| e.id == tm_id).cloned()
+        .ok_or_else(|| format!("TM {} not found", tm_id))?;
+
+    let tm = TmDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    let (tus, total_count) = tm.list_tus_paginated(offset, limit, search.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(PaginatedTusResult {
+        tus,
+        total_count,
+        offset,
+        limit,
+    })
+}
+
+/// Update an existing Translation Unit in a TM.
+#[tauri::command]
+pub async fn update_tm_tu(
+    tm_id: String,
+    tu_id: i64,
+    source_text: String,
+    target_text: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let entry = state.tm_index.lock().unwrap()
+        .iter().find(|e| e.id == tm_id).cloned()
+        .ok_or_else(|| format!("TM {} not found", tm_id))?;
+
+    let tm = TmDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    tm.update_tu(tu_id, &source_text, &target_text)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Delete a Translation Unit from a TM.
+#[tauri::command]
+pub async fn delete_tm_tu(
+    tm_id: String,
+    tu_id: i64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let entry = state.tm_index.lock().unwrap()
+        .iter().find(|e| e.id == tm_id).cloned()
+        .ok_or_else(|| format!("TM {} not found", tm_id))?;
+
+    let tm = TmDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    tm.delete(tu_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Batch Find-and-Replace across an entire Translation Memory.
+#[tauri::command]
+pub async fn batch_replace_tm(
+    tm_id: String,
+    find_text: String,
+    replace_text: String,
+    target_only: bool,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let entry = state.tm_index.lock().unwrap()
+        .iter().find(|e| e.id == tm_id).cloned()
+        .ok_or_else(|| format!("TM {} not found", tm_id))?;
+
+    let tm = TmDb::open(entry.id, entry.name, entry.path)
+        .map_err(|e| e.to_string())?;
+
+    let count = tm.batch_replace(&find_text, &replace_text, target_only)
+        .map_err(|e| e.to_string())?;
+
+    Ok(count)
+}
+

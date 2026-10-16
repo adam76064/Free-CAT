@@ -15,7 +15,7 @@
   import { currentProject } from '$lib/stores/project';
   import TmMatchBadge from '$lib/components/tm/TmMatchBadge.svelte';
   import AutoSuggestPopup from './AutoSuggestPopup.svelte';
-  import QuickTagPopup from './QuickTagPopup.svelte';
+  import QuickPlaceOmnibar from './QuickPlaceOmnibar.svelte';
   import type { SuggestionItem } from '$lib/utils/suggestTrie';
 
   export let segment: Segment;
@@ -31,6 +31,7 @@
   export let onMergeNext: (segId: string) => void;
   export let onMergePrev: (segId: string) => void;
   export let onToggleBookmark: (segId: string) => void;
+  export let onToggleLock: (segId: string) => void = () => {};
   export let onQuerySuggestions: (word: string) => void = () => {};
   export let onApplyAutoPatch: (patch: string) => void = () => {};
   export let onAiRefineAction: (action: string, selectedText: string) => void = () => {};
@@ -39,9 +40,10 @@
   let suggestVisible = false;
   let activeSuggestIndex = 0;
 
-  // QuickTag HUD state
-  let tagPopupVisible = false;
-  let activeTagIndex = 0;
+  // QuickPlace Omnibar HUD state
+  let quickPlaceVisible = false;
+  let activeQuickPlaceIndex = 0;
+  let highlightedSourceToken: string | null = null;
 
   // Track Changes / Revision initial text
   let originalTargetText: string = segment.target_text;
@@ -127,14 +129,14 @@
   $: targetTags = extractTags(segment.target_text);
   $: missingTags = sourceTags.filter(t => !targetTags.includes(t));
 
-  function handleInsertTag(tag: string) {
-    if (!targetEl) return;
+  function handleInsertPlaceable(text: string) {
+    if (!targetEl || segment.locked) return;
     targetEl.focus();
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && targetEl.contains(sel.anchorNode)) {
       const range = sel.getRangeAt(0);
       range.deleteContents();
-      const node = document.createTextNode(tag);
+      const node = document.createTextNode(text);
       range.insertNode(node);
       range.setStartAfter(node);
       range.collapse(true);
@@ -142,30 +144,33 @@
       sel.addRange(range);
     } else {
       const current = targetEl.textContent || '';
-      targetEl.textContent = current ? `${current} ${tag}` : tag;
+      targetEl.textContent = current ? `${current} ${text}` : text;
       moveCursorToEnd();
     }
     const newText = targetEl.textContent || '';
     onTargetChange(segment.id, newText);
-    tagPopupVisible = false;
+    quickPlaceVisible = false;
+    highlightedSourceToken = null;
   }
 
   function handleInsertAllMissingTags() {
-    if (missingTags.length === 0) return;
+    if (missingTags.length === 0 || segment.locked) return;
     const current = targetEl?.textContent || '';
     const toAppend = (current.endsWith(' ') || !current ? '' : ' ') + missingTags.join(' ');
     const newText = current + toAppend;
     if (targetEl) targetEl.textContent = newText;
     onTargetChange(segment.id, newText);
-    tagPopupVisible = false;
+    quickPlaceVisible = false;
   }
 
   function handleCopySource() {
+    if (segment.locked) return;
     onTargetChange(segment.id, segment.source_text);
     if (targetEl) targetEl.textContent = segment.source_text;
   }
 
   function handleClearTarget() {
+    if (segment.locked) return;
     onTargetChange(segment.id, '');
     if (targetEl) targetEl.textContent = '';
   }
@@ -208,12 +213,54 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    // QuickTag HUD: Ctrl+, or Cmd+,
+    // QuickPlace Omnibar HUD: Ctrl+, or Cmd+,
     if ((e.ctrlKey || e.metaKey) && e.key === ',') {
       e.preventDefault();
-      if (missingTags.length > 0) {
-        tagPopupVisible = !tagPopupVisible;
-        activeTagIndex = 0;
+      quickPlaceVisible = !quickPlaceVisible;
+      activeQuickPlaceIndex = 0;
+      return;
+    }
+
+    // Toggle Lock: Ctrl+L
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l' && !e.shiftKey) {
+      e.preventDefault();
+      onToggleLock(segment.id);
+      return;
+    }
+
+    // Delete to end of segment: Ctrl+D
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !e.shiftKey) {
+      e.preventDefault();
+      if (!segment.locked && targetEl) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && targetEl.contains(sel.anchorNode)) {
+          const range = sel.getRangeAt(0);
+          range.setEnd(targetEl, targetEl.childNodes.length);
+          range.deleteContents();
+          const newText = targetEl.textContent || '';
+          onTargetChange(segment.id, newText);
+        }
+      }
+      return;
+    }
+
+    // Delete to next tag: Ctrl+Shift+D
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      if (!segment.locked && targetEl) {
+        const full = targetEl.textContent || '';
+        const sel = window.getSelection();
+        const offset = sel?.focusOffset || 0;
+        const after = full.slice(offset);
+        const tagMatch = after.search(/\{[^}]+\}/);
+        let newText = full;
+        if (tagMatch !== -1) {
+          newText = full.slice(0, offset) + after.slice(tagMatch);
+        } else {
+          newText = full.slice(0, offset);
+        }
+        targetEl.textContent = newText;
+        onTargetChange(segment.id, newText);
       }
       return;
     }
@@ -236,10 +283,11 @@
     }
 
     if (e.key === 'Escape') {
-      if (suggestVisible || tagPopupVisible || isAiRefineMenuOpen) {
+      if (suggestVisible || quickPlaceVisible || isAiRefineMenuOpen) {
         e.preventDefault();
         suggestVisible = false;
-        tagPopupVisible = false;
+        quickPlaceVisible = false;
+        highlightedSourceToken = null;
         isAiRefineMenuOpen = false;
         return;
       }
@@ -272,7 +320,8 @@
     if (e.key === 'Tab' || (e.key === 'Enter' && (e.ctrlKey || !e.shiftKey))) {
       e.preventDefault();
       suggestVisible = false;
-      tagPopupVisible = false;
+      quickPlaceVisible = false;
+      highlightedSourceToken = null;
       isAiRefineMenuOpen = false;
       onConfirm({ ...segment, target_text: targetEl?.textContent ?? '' });
       return;
@@ -314,12 +363,43 @@
     }
   }
 
-  /** Render source text with stylish non-breakable tag pills */
-  function renderSource(text: string): string {
-    return text.replace(
+  function getStructureCode(text: string): { code: string; label: string; color: string } {
+    const t = text.trim();
+    if (t.startsWith('# ') || t.startsWith('<h1>')) {
+      return { code: 'H1', label: 'Heading 1', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
+    }
+    if (t.startsWith('## ') || t.startsWith('<h2>')) {
+      return { code: 'H2', label: 'Heading 2', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
+    }
+    if (t.startsWith('### ') || t.startsWith('<h3>')) {
+      return { code: 'H3', label: 'Heading 3', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
+    }
+    if (t.startsWith('- ') || t.startsWith('* ') || /^\d+\.\s/.test(t) || t.startsWith('<li>')) {
+      return { code: 'LI', label: 'List Item', color: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800' };
+    }
+    if (t.includes('|') || t.startsWith('<td>') || t.startsWith('<th>')) {
+      return { code: 'TC', label: 'Table Cell', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800' };
+    }
+    if (t.toLowerCase().includes('footnote') || /\[\^\d+\]/.test(t)) {
+      return { code: 'FN', label: 'Footnote', color: 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800' };
+    }
+    return { code: 'P', label: 'Paragraph', color: 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700' };
+  }
+
+  $: structure = getStructureCode(segment.source_text);
+
+  /** Render source text with stylish non-breakable tag pills & live QuickPlace spotlight */
+  function renderSource(text: string, highlightToken: string | null): string {
+    let html = text.replace(
       /\{([^}]+)\}/g,
       '<span class="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/80 px-1.5 py-0.2 rounded select-none mx-0.5 tracking-tight cursor-default" title="Tag placeholder {$1}">🏷️$1</span>'
     );
+    if (highlightToken && highlightToken.trim() && !highlightToken.startsWith('{')) {
+      const escaped = highlightToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`(${escaped})`, 'g');
+      html = html.replace(re, '<mark class="bg-cyan-200 dark:bg-cyan-900/90 text-cyan-950 dark:text-cyan-100 ring-2 ring-cyan-500 rounded px-1 animate-pulse font-bold">$1</mark>');
+    }
+    return html;
   }
 
   $: rowBg = isSelected
@@ -342,7 +422,7 @@
 {#if $settings.layoutMode === 'stacked'}
   <!-- Stacked Layout: Source block over Target block -->
   <div
-    class="grid grid-cols-[2.75rem_1fr] min-h-[4.5rem] border-b border-gray-100 dark:border-gray-800/80
+    class="grid grid-cols-[3.25rem_1fr] min-h-[4.5rem] border-b border-gray-100 dark:border-gray-800/80
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
     on:click={onSelect}
     role="row"
@@ -358,7 +438,24 @@
           title={STATUS_LABELS[segment.status]}
         ></span>
       </div>
-      <div class="flex flex-col items-center gap-1">
+      <div class="flex flex-col items-center gap-1.5">
+        <!-- DSI Structure Code -->
+        <span
+          class="text-[9px] font-mono font-bold px-1 py-0.2 rounded border {structure.color}"
+          title="Document structure: {structure.label}"
+        >
+          {structure.code}
+        </span>
+        <!-- Lock Toggle Button -->
+        <button
+          type="button"
+          on:click|stopPropagation={() => onToggleLock(segment.id)}
+          class="text-[11px] leading-none transition-transform hover:scale-125 {segment.locked ? 'text-rose-500 font-bold' : 'text-gray-300 dark:text-gray-700 hover:text-rose-400'}"
+          title={segment.locked ? 'Locked (Ctrl+L to unlock)' : 'Lock segment (Ctrl+L)'}
+        >
+          {segment.locked ? '🔒' : '🔓'}
+        </button>
+        <!-- Bookmark Button -->
         <button
           on:click|stopPropagation={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
@@ -383,7 +480,7 @@
           {/if}
         </div>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-        {@html renderSource(segment.source_text)}
+        {@html renderSource(segment.source_text, highlightedSourceToken)}
       </div>
 
       <!-- Target Panel -->
@@ -395,14 +492,28 @@
               <span>⚠️ {missingTags.length} missing tag{missingTags.length > 1 ? 's' : ''}</span>
               <button
                 type="button"
-                on:click|stopPropagation={() => { tagPopupVisible = !tagPopupVisible; activeTagIndex = 0; }}
+                on:click|stopPropagation={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
                 class="hover:underline font-bold text-brand-600 dark:text-brand-400 cursor-pointer ml-1"
               >
-                Insert (Ctrl+,)
+                QuickPlace (Ctrl+,)
               </button>
             </div>
           {/if}
         </div>
+
+        {#if segment.locked}
+          <!-- Locked Segment Banner -->
+          <div class="mb-2 px-2.5 py-1 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-center justify-between select-none">
+            <span class="flex items-center gap-1 font-medium"><span>🔒</span> <span>Segment is locked</span></span>
+            <button
+              type="button"
+              on:click|stopPropagation={() => onToggleLock(segment.id)}
+              class="hover:underline font-semibold cursor-pointer text-[11px]"
+            >
+              Unlock (Ctrl+L)
+            </button>
+          </div>
+        {/if}
 
         {#if isRevised}
           <!-- Revision Diff Banner -->
@@ -446,12 +557,14 @@
           </div>
         {/if}
 
-        <QuickTagPopup
-          visible={tagPopupVisible}
-          tags={missingTags}
-          selectedIndex={activeTagIndex}
-          onSelect={handleInsertTag}
-          onClose={() => tagPopupVisible = false}
+        <QuickPlaceOmnibar
+          visible={quickPlaceVisible}
+          sourceText={segment.source_text}
+          targetText={segment.target_text}
+          selectedIndex={activeQuickPlaceIndex}
+          onSelect={handleInsertPlaceable}
+          onHighlightSource={(tok) => highlightedSourceToken = tok}
+          onClose={() => { quickPlaceVisible = false; highlightedSourceToken = null; }}
         />
 
         {#if isSelected}
@@ -466,7 +579,7 @@
         <!-- Target Contenteditable -->
         <div
           bind:this={targetEl}
-          contenteditable="true"
+          contenteditable={!segment.locked}
           tabindex="0"
           on:input={handleInput}
           on:keydown={handleKeydown}
@@ -475,10 +588,11 @@
           on:keyup={handleSelectionCheck}
           class="outline-none flex-1 min-h-[2.5rem] leading-relaxed
                  text-gray-900 dark:text-white caret-brand-500 font-editor
+                 {segment.locked ? 'bg-gray-50/60 dark:bg-gray-900/40 text-gray-400 cursor-not-allowed select-none' : ''}
                  {isSelected ? '' : 'text-gray-600 dark:text-gray-300'}"
           dir="auto"
           lang={$currentProject?.tgt_lang || 'en'}
-          spellcheck={$settings.spellcheckEnabled}
+          spellcheck={$settings.spellcheckEnabled && !segment.locked}
           role="textbox"
           aria-multiline="true"
           aria-label="Translation target for segment {segment.seq_number}"
@@ -492,14 +606,14 @@
   <div
     class="grid min-h-[3rem] border-b border-gray-100 dark:border-gray-800/80
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
-    style="grid-template-columns: 2.75rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
+    style="grid-template-columns: 3.25rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
     on:click={onSelect}
     role="row"
     tabindex="-1"
     aria-selected={isSelected}
   >
-    <!-- Left: Seq # and status -->
-    <div class="flex items-center justify-between px-2 py-2 shrink-0 select-none border-r border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20">
+    <!-- Left: Seq #, status, DSI, and lock -->
+    <div class="flex flex-col items-center justify-between py-2 px-1 shrink-0 select-none border-r border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20">
       <div class="flex flex-col items-center gap-1">
         <span class="text-xs text-gray-400 dark:text-gray-500 tabular-nums font-mono leading-none">{segment.seq_number}</span>
         <span
@@ -507,7 +621,24 @@
           title={STATUS_LABELS[segment.status]}
         ></span>
       </div>
-      <div class="flex flex-col items-center gap-1">
+      <div class="flex flex-col items-center gap-1.5">
+        <!-- DSI Structure Code -->
+        <span
+          class="text-[9px] font-mono font-bold px-1 py-0.2 rounded border {structure.color}"
+          title="Document structure: {structure.label}"
+        >
+          {structure.code}
+        </span>
+        <!-- Lock Toggle Button -->
+        <button
+          type="button"
+          on:click|stopPropagation={() => onToggleLock(segment.id)}
+          class="text-[11px] leading-none transition-transform hover:scale-125 {segment.locked ? 'text-rose-500 font-bold' : 'text-gray-300 dark:text-gray-700 hover:text-rose-400'}"
+          title={segment.locked ? 'Locked (Ctrl+L to unlock)' : 'Lock segment (Ctrl+L)'}
+        >
+          {segment.locked ? '🔒' : '🔓'}
+        </button>
+        <!-- Bookmark Button -->
         <button
           on:click|stopPropagation={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
@@ -527,12 +658,26 @@
       style="font-size: {$settings.fontSize}px;"
     >
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      {@html renderSource(segment.source_text)}
+      {@html renderSource(segment.source_text, highlightedSourceToken)}
     </div>
 
     <!-- Target Column (editable) -->
     <!-- svelte-ignore a11y-interactive-supports-focus -->
     <div class="relative flex flex-col justify-start">
+      {#if segment.locked}
+        <!-- Locked Segment Banner -->
+        <div class="m-1.5 px-2.5 py-1 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-center justify-between select-none">
+          <span class="flex items-center gap-1 font-medium"><span>🔒</span> <span>Segment is locked</span></span>
+          <button
+            type="button"
+            on:click|stopPropagation={() => onToggleLock(segment.id)}
+            class="hover:underline font-semibold cursor-pointer text-[11px]"
+          >
+            Unlock (Ctrl+L)
+          </button>
+        </div>
+      {/if}
+
       {#if isRevised}
         <!-- Revision Diff Banner -->
         <div class="m-1.5 p-2 rounded bg-amber-50/90 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between">
@@ -564,10 +709,10 @@
           <div class="flex items-center gap-2">
             <button
               type="button"
-              on:click|stopPropagation={() => { tagPopupVisible = !tagPopupVisible; activeTagIndex = 0; }}
+              on:click|stopPropagation={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
               class="hover:underline font-bold text-brand-600 dark:text-brand-400 cursor-pointer"
             >
-              Insert (Ctrl+,)
+              QuickPlace (Ctrl+,)
             </button>
             <span>•</span>
             <button
@@ -599,12 +744,14 @@
         </div>
       {/if}
 
-      <QuickTagPopup
-        visible={tagPopupVisible}
-        tags={missingTags}
-        selectedIndex={activeTagIndex}
-        onSelect={handleInsertTag}
-        onClose={() => tagPopupVisible = false}
+      <QuickPlaceOmnibar
+        visible={quickPlaceVisible}
+        sourceText={segment.source_text}
+        targetText={segment.target_text}
+        selectedIndex={activeQuickPlaceIndex}
+        onSelect={handleInsertPlaceable}
+        onHighlightSource={(tok) => highlightedSourceToken = tok}
+        onClose={() => { quickPlaceVisible = false; highlightedSourceToken = null; }}
       />
 
       {#if isSelected}
@@ -619,7 +766,7 @@
       <!-- Target Contenteditable -->
       <div
         bind:this={targetEl}
-        contenteditable="true"
+        contenteditable={!segment.locked}
         tabindex="0"
         on:input={handleInput}
         on:keydown={handleKeydown}
@@ -628,10 +775,11 @@
         on:keyup={handleSelectionCheck}
         class="py-2.5 px-3.5 text-sm editor-text outline-none flex-1 min-h-[3rem] leading-relaxed
                text-gray-900 dark:text-white caret-brand-500 font-editor
+               {segment.locked ? 'bg-gray-50/60 dark:bg-gray-900/40 text-gray-400 cursor-not-allowed select-none' : ''}
                {isSelected ? '' : 'text-gray-600 dark:text-gray-300'}"
         dir="auto"
         lang={$currentProject?.tgt_lang || 'en'}
-        spellcheck={$settings.spellcheckEnabled}
+        spellcheck={$settings.spellcheckEnabled && !segment.locked}
         role="textbox"
         aria-multiline="true"
         aria-label="Translation target for segment {segment.seq_number}"

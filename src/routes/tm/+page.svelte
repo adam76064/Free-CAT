@@ -1,6 +1,7 @@
 <script lang="ts">
   // TM Manager page — list, create, import/export TMs.
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { open, save } from '@tauri-apps/plugin-dialog';
   import { availableTms } from '$lib/stores/tm';
   import { listTms, createTm, deleteTm, importTmx, exportTmx } from '$lib/ipc/tm';
@@ -96,6 +97,13 @@
               </div>
             </div>
             <div class="flex items-center gap-2">
+              <button
+                on:click={() => goto(`/tm/${tm.id}`)}
+                class="px-2.5 py-1.5 text-xs bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950 dark:hover:bg-brand-900 dark:text-brand-300 border border-brand-200 dark:border-brand-800 rounded-lg font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                title="Open TM Maintenance Studio"
+              >
+                <span>🛠 Maintain</span>
+              </button>
               <button
                 on:click={() => handleImportTmx(tm.id)}
                 class="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700

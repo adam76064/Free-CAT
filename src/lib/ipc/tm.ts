@@ -88,3 +88,79 @@ export async function queryFragments(args: {
 }): Promise<FragmentMatch[]> {
   return invoke('query_fragments', { args });
 }
+
+export interface TranslationUnit {
+  id?: number;
+  source_lang: string;
+  target_lang: string;
+  source_text: string;
+  target_text: string;
+  created_at?: string;
+  modified_at?: string;
+  created_by?: string | null;
+  client?: string | null;
+  domain?: string | null;
+  source_file?: string | null;
+  usage_count?: number;
+  metadata?: string | null;
+}
+
+export interface PaginatedTusResult {
+  tus: TranslationUnit[];
+  total_count: number;
+  offset: number;
+  limit: number;
+}
+
+export async function getTmTusPaginated(args: {
+  tm_id: string;
+  offset: number;
+  limit: number;
+  search?: string;
+}): Promise<PaginatedTusResult> {
+  return invoke('get_tm_tus_paginated', {
+    tmId: args.tm_id,
+    offset: args.offset,
+    limit: args.limit,
+    search: args.search ?? null,
+  });
+}
+
+export async function updateTmTu(args: {
+  tm_id: string;
+  tu_id: number;
+  source_text: string;
+  target_text: string;
+}): Promise<void> {
+  return invoke('update_tm_tu', {
+    tmId: args.tm_id,
+    tuId: args.tu_id,
+    sourceText: args.source_text,
+    targetText: args.target_text,
+  });
+}
+
+export async function deleteTmTu(args: {
+  tm_id: string;
+  tu_id: number;
+}): Promise<void> {
+  return invoke('delete_tm_tu', {
+    tmId: args.tm_id,
+    tuId: args.tu_id,
+  });
+}
+
+export async function batchReplaceTm(args: {
+  tm_id: string;
+  find_text: string;
+  replace_text: string;
+  target_only: boolean;
+}): Promise<number> {
+  return invoke('batch_replace_tm', {
+    tmId: args.tm_id,
+    findText: args.find_text,
+    replaceText: args.replace_text,
+    targetOnly: args.target_only,
+  });
+}
+

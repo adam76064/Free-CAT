@@ -25,6 +25,42 @@ export interface Segment {
 
 export type FilterMode = 'all' | 'new' | 'draft' | 'translated' | 'needs_review' | 'reviewed' | 'bookmarked' | 'qa_warning';
 
+export interface AdvancedFilterCriteria {
+  isActive: boolean;
+  statuses: SegmentStatus[];
+  lockedOnly?: boolean | null;
+  bookmarkedOnly?: boolean;
+  qaIssuesOnly?: boolean;
+  commentsOnly?: boolean;
+  matchTiers: string[];
+  structureTypes: string[];
+  sourceRegex?: string;
+  targetRegex?: string;
+  caseSensitive?: boolean;
+  invertMatch?: boolean;
+  samplePercent: number;
+  sampleSeed?: number;
+}
+
+export const defaultAdvancedFilter: AdvancedFilterCriteria = {
+  isActive: false,
+  statuses: [],
+  lockedOnly: null,
+  bookmarkedOnly: false,
+  qaIssuesOnly: false,
+  commentsOnly: false,
+  matchTiers: [],
+  structureTypes: [],
+  sourceRegex: '',
+  targetRegex: '',
+  caseSensitive: false,
+  invertMatch: false,
+  samplePercent: 100,
+  sampleSeed: 42,
+};
+
+export const advancedFilter = writable<AdvancedFilterCriteria>(defaultAdvancedFilter);
+
 // All segments for the current file
 export const segments = writable<Segment[]>([]);
 
@@ -37,11 +73,82 @@ export const filterMode = writable<FilterMode>('all');
 // Search query for segment filter
 export const segmentSearch = writable<string>('');
 
-// Derived: filtered segments based on filterMode and search
+function getStructureCodeStr(text: string): string {
+  const t = text.trim();
+  if (t.startsWith('# ') || t.startsWith('<h1>')) return 'H1';
+  if (t.startsWith('## ') || t.startsWith('<h2>')) return 'H2';
+  if (t.startsWith('### ') || t.startsWith('<h3>')) return 'H3';
+  if (t.startsWith('- ') || t.startsWith('* ') || /^\d+\.\s/.test(t) || t.startsWith('<li>')) return 'LI';
+  if (t.includes('|') || t.startsWith('<td>') || t.startsWith('<th>')) return 'TC';
+  if (t.toLowerCase().includes('footnote') || /\[\^\d+\]/.test(t)) return 'FN';
+  return 'P';
+}
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// Derived: filtered segments based on filterMode, search, and advancedFilter
 export const filteredSegments = derived(
-  [segments, filterMode, segmentSearch, qaResults],
-  ([$segments, $filter, $search, $qa]) => {
+  [segments, filterMode, segmentSearch, qaResults, advancedFilter],
+  ([$segments, $filter, $search, $qa, $adv]) => {
     let result = $segments;
+
+    if ($adv && $adv.isActive) {
+      const qaSegIds = new Set($qa.map(q => q.segment_id).filter(Boolean));
+      let srcRe: RegExp | null = null;
+      let tgtRe: RegExp | null = null;
+      try {
+        if ($adv.sourceRegex?.trim()) srcRe = new RegExp($adv.sourceRegex, $adv.caseSensitive ? '' : 'i');
+      } catch (e) { /* ignore invalid regex */ }
+      try {
+        if ($adv.targetRegex?.trim()) tgtRe = new RegExp($adv.targetRegex, $adv.caseSensitive ? '' : 'i');
+      } catch (e) { /* ignore invalid regex */ }
+
+      return result.filter(s => {
+        let match = true;
+
+        if ($adv.statuses.length > 0 && !$adv.statuses.includes(s.status)) match = false;
+        if ($adv.lockedOnly === true && !s.locked) match = false;
+        if ($adv.lockedOnly === false && s.locked) match = false;
+        if ($adv.bookmarkedOnly && !s.bookmarked) match = false;
+        if ($adv.qaIssuesOnly && !qaSegIds.has(s.id)) match = false;
+        if ($adv.commentsOnly && (!s.comment || !s.comment.trim())) match = false;
+
+        if ($adv.matchTiers.length > 0) {
+          const inTiers = $adv.matchTiers.some(t => {
+            if (t === '100') return s.match_percent === 100;
+            if (t === 'fuzzy') return s.match_percent !== null && s.match_percent < 100;
+            if (t === 'frag') return s.match_origin === 'fragment';
+            if (t === 'mt') return s.match_origin === 'mt';
+            if (t === 'auto_propagate') return s.match_origin === 'auto_propagate';
+            return false;
+          });
+          if (!inTiers) match = false;
+        }
+
+        if ($adv.structureTypes.length > 0) {
+          const code = getStructureCodeStr(s.source_text);
+          if (!$adv.structureTypes.includes(code)) match = false;
+        }
+
+        if (srcRe && !srcRe.test(s.source_text)) match = false;
+        if (tgtRe && !tgtRe.test(s.target_text)) match = false;
+
+        if ($adv.samplePercent < 100) {
+          const seed = $adv.sampleSeed ?? 42;
+          const val = hashString(s.id + seed) % 100;
+          if (val >= $adv.samplePercent) match = false;
+        }
+
+        return $adv.invertMatch ? !match : match;
+      });
+    }
 
     if ($filter !== 'all') {
       if ($filter === 'bookmarked') {

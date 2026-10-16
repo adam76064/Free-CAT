@@ -305,6 +305,7 @@ impl ProjectDb {
              SET target_text = ?1, status = 'draft', modified_at = ?2, match_origin = 'auto_propagate'
              WHERE source_text = ?3
                AND status IN ('new', 'draft')
+               AND locked = 0
                AND file_id IN (SELECT id FROM project_files WHERE project_id = ?4)",
             params![target_text, modified_at, source_text, project_id],
         )?;
@@ -522,6 +523,20 @@ impl ProjectDb {
         let new_state = if current == 0 { 1 } else { 0 };
         self.conn.execute(
             "UPDATE segments SET bookmarked = ?1 WHERE id = ?2",
+            params![new_state, segment_id],
+        )?;
+        Ok(new_state != 0)
+    }
+
+    pub fn toggle_segment_lock(&self, segment_id: &str) -> Result<bool> {
+        let current: i32 = self.conn.query_row(
+            "SELECT locked FROM segments WHERE id = ?1",
+            params![segment_id],
+            |r| r.get(0),
+        )?;
+        let new_state = if current == 0 { 1 } else { 0 };
+        self.conn.execute(
+            "UPDATE segments SET locked = ?1 WHERE id = ?2",
             params![new_state, segment_id],
         )?;
         Ok(new_state != 0)

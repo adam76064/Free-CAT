@@ -214,3 +214,97 @@ pub async fn export_sdlrpx(
 
     Ok(return_pkg_path.to_string_lossy().to_string())
 }
+
+/// Export project segments to an external Bilingual Review Word (.docx) document.
+#[tauri::command]
+pub async fn export_bilingual_review(
+    project_id: String,
+    file_id: String,
+    out_path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let db = state.project_db.lock().unwrap();
+    let files = db.get_files_for_project(&project_id).map_err(|e| e.to_string())?;
+    let file = files.iter().find(|f| f.id == file_id)
+        .ok_or_else(|| format!("File {} not found", file_id))?;
+
+    let segments = db.get_segments_for_file(&file_id).map_err(|e| e.to_string())?;
+
+    let output_path = out_path.unwrap_or_else(|| {
+        let clean_name = file.filename.replace('.', "_");
+        state.data_dir
+            .join("projects").join(&project_id).join("review")
+            .join(format!("{}_bilingual_review.docx", clean_name))
+            .to_string_lossy().to_string()
+    });
+
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    crate::core::parsers::bilingual_docx::export_bilingual_docx(
+        &segments,
+        &file.filename,
+        std::path::Path::new(&output_path),
+    ).map_err(|e| e.to_string())?;
+
+    log::info!("Exported bilingual review DOCX for '{}' → {}", file.filename, output_path);
+    Ok(output_path)
+}
+
+/// Import an edited Bilingual Review Word (.docx) document (Retrofit import).
+#[tauri::command]
+pub async fn import_bilingual_review(
+    file_id: String,
+    docx_path: String,
+    state: State<'_, AppState>,
+) -> Result<crate::core::parsers::bilingual_docx::BilingualRetrofitReport, String> {
+    let path = std::path::Path::new(&docx_path);
+    if !path.exists() {
+        return Err(format!("Review DOCX file not found: {}", docx_path));
+    }
+
+    let rows = crate::core::parsers::bilingual_docx::import_bilingual_docx_retrofit(path)
+        .map_err(|e| format!("Failed to parse bilingual review document: {}", e))?;
+
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let db = state.project_db.lock().unwrap();
+    let segments = db.get_segments_for_file(&file_id).map_err(|e| e.to_string())?;
+
+    let mut updated_count = 0;
+    let mut unchanged_count = 0;
+
+    for row in &rows {
+        // Find segment by sequence number
+        if let Some(seg) = segments.iter().find(|s| s.seq_number == row.seq_number) {
+            // Check if reviewer edited the target text
+            if seg.target_text.trim() != row.target_text.trim() {
+                let note = if let Some(ref n) = row.notes {
+                    format!("{} | [Retrofit: {}]", seg.comment.as_deref().unwrap_or(""), n)
+                } else {
+                    format!("{} [Retrofit updated]", seg.comment.as_deref().unwrap_or(""))
+                };
+
+                db.update_segment_target(
+                    &seg.id,
+                    &row.target_text,
+                    &crate::core::models::SegmentStatus::NeedsReview,
+                    &now,
+                ).map_err(|e| e.to_string())?;
+                db.update_segment_comment(&seg.id, Some(note.trim()))
+                    .map_err(|e| e.to_string())?;
+                updated_count += 1;
+            } else {
+                unchanged_count += 1;
+            }
+        }
+    }
+
+    log::info!("Retrofit import complete: {} rows processed ({} updated, {} unchanged)", rows.len(), updated_count, unchanged_count);
+    Ok(crate::core::parsers::bilingual_docx::BilingualRetrofitReport {
+        total_rows: rows.len(),
+        updated_count,
+        unchanged_count,
+    })
+}
+

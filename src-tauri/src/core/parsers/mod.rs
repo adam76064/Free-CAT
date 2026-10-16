@@ -18,6 +18,7 @@ pub mod json;
 pub mod yaml;
 pub mod xlsx;
 pub mod pptx;
+pub mod bilingual_docx;
 
 /// Raw segment data returned by any parser.
 #[derive(Debug, Clone)]

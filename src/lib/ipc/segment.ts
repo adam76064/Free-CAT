@@ -44,6 +44,10 @@ export async function toggleBookmark(segment_id: string): Promise<boolean> {
   return invoke('toggle_bookmark', { segmentId: segment_id });
 }
 
+export async function toggleSegmentLock(segment_id: string): Promise<boolean> {
+  return invoke('toggle_segment_lock', { segmentId: segment_id });
+}
+
 export async function updateSegmentComment(args: {
   segment_id: string;
   comment: string | null;

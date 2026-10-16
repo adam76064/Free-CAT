@@ -25,13 +25,17 @@
   import LivePreviewPanel from '$lib/components/panels/LivePreviewPanel.svelte';
   import TermExtractionModal from '$lib/components/panels/TermExtractionModal.svelte';
   import QuoteInvoiceModal from '$lib/components/analysis/QuoteInvoiceModal.svelte';
+  import AdvancedDisplayFilterPanel from './AdvancedDisplayFilterPanel.svelte';
+  import ConcordanceModal from './ConcordanceModal.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
   import { queryTb } from '$lib/ipc/termbase';
-  import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark } from '$lib/ipc/segment';
+  import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark, toggleSegmentLock } from '$lib/ipc/segment';
   import { settings } from '$lib/stores/settings';
-  import { runQa, preTranslate } from '$lib/ipc/project';
+  import { advancedFilter } from '$lib/stores/segments';
+  import { runQa, preTranslate, exportBilingualReview, importBilingualReview } from '$lib/ipc/project';
+  import { open } from '@tauri-apps/plugin-dialog';
   import { queryAiAssistant } from '$lib/ipc/ai';
 
   // Auto-save debounce handle
@@ -42,6 +46,9 @@
   let isCommandPaletteOpen = false;
   let isTermExtractionOpen = false;
   let isQuoteInvoiceOpen = false;
+  let isAdvancedFilterOpen = false;
+  let isConcordanceOpen = false;
+  let concordanceInitialQuery = '';
   let pretranslating = false;
   let isToolsMenuOpen = false;
   let activeAutoPatch: string | null = null;
@@ -201,7 +208,19 @@
         const next = s.layoutMode === 'side-by-side' ? 'stacked' : s.layoutMode === 'stacked' ? 'zen' : 'side-by-side';
         return { ...s, layoutMode: next };
       });
+    } else if (e.key === 'F3') {
+      e.preventDefault();
+      const sel = window.getSelection()?.toString().trim() || '';
+      concordanceInitialQuery = sel || ($selectedSegment?.source_text.slice(0, 60) || '');
+      isConcordanceOpen = true;
     }
+  }
+
+  function handleInsertConcordance(targetText: string) {
+    if (!$selectedSegment || $selectedSegment.locked) return;
+    const current = $selectedSegment.target_text || '';
+    const newText = current ? `${current} ${targetText}` : targetText;
+    handleTargetChange($selectedSegment.id, newText);
   }
 
   onMount(() => {
@@ -382,7 +401,28 @@
       console.error('Confirm failed:', e);
     }
 
-    selectedIndex.update(i => Math.min(i + 1, $filteredSegments.length - 1));
+    // Trados navigation: jump to the next unconfirmed, unlocked segment
+    const currentIdx = $selectedIndex;
+    let nextIdx = -1;
+    for (let k = currentIdx + 1; k < $filteredSegments.length; k++) {
+      if ($filteredSegments[k].status !== 'translated' && !$filteredSegments[k].locked) {
+        nextIdx = k;
+        break;
+      }
+    }
+    if (nextIdx === -1) {
+      for (let k = 0; k < currentIdx; k++) {
+        if ($filteredSegments[k].status !== 'translated' && !$filteredSegments[k].locked) {
+          nextIdx = k;
+          break;
+        }
+      }
+    }
+    if (nextIdx !== -1) {
+      selectedIndex.set(nextIdx);
+    } else {
+      selectedIndex.update(i => Math.min(i + 1, $filteredSegments.length - 1));
+    }
     await tick();
     scrollToSelected();
   }
@@ -485,6 +525,16 @@
     }
   }
 
+  // Lock Handler (Ctrl+L)
+  async function handleToggleLock(segId: string) {
+    try {
+      const newState = await toggleSegmentLock(segId);
+      updateSegmentInStore(segId, { locked: newState });
+    } catch (e) {
+      console.error('Lock toggle failed:', e);
+    }
+  }
+
   async function handleRunQa() {
     if (!$currentProject || !$currentFile) return;
     try {
@@ -515,6 +565,40 @@
       console.error('Pre-translate failed:', e);
     } finally {
       pretranslating = false;
+    }
+  }
+
+  async function handleExportBilingualReviewDocx() {
+    if (!$currentProject || !$currentFile) return;
+    try {
+      const out = await exportBilingualReview({
+        project_id: $currentProject.id,
+        file_id: $currentFile.id,
+      });
+      alert(`Bilingual review Word document exported successfully:\n${out}`);
+    } catch (e: any) {
+      alert(`Failed to export bilingual review document: ${e}`);
+    }
+  }
+
+  async function handleImportBilingualReviewDocx() {
+    if (!$currentFile || !$currentProject) return;
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Word Document (*.docx)', extensions: ['docx'] }],
+      });
+      if (!selected) return;
+      const docxPath = typeof selected === 'string' ? selected : (selected as string[])[0];
+      const res = await importBilingualReview({
+        file_id: $currentFile.id,
+        docx_path: docxPath,
+      });
+      const fresh = await getSegments($currentFile.id, $currentProject.id);
+      segments.set(fresh);
+      alert(`Retrofit Import Complete!\n• ${res.updated_count} segments updated\n• ${res.unchanged_count} segments unchanged`);
+    } catch (e: any) {
+      alert(`Retrofit import failed: ${e}`);
     }
   }
 
@@ -565,6 +649,39 @@
         />
         <span class="absolute left-2.5 top-1.5 text-xs text-gray-400">🔍</span>
       </div>
+
+      <!-- Advanced Display Filter 2.0 Button -->
+      <button
+        type="button"
+        on:click={() => (isAdvancedFilterOpen = !isAdvancedFilterOpen)}
+        class="px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer
+               {$advancedFilter.isActive
+                 ? 'bg-brand-500 text-white border-brand-600 shadow-xs'
+                 : isAdvancedFilterOpen
+                   ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700'
+                   : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
+        title="Trados Advanced Display Filter 2.0 Studio"
+      >
+        <span>🎯 Filter 2.0</span>
+        {#if $advancedFilter.isActive}
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-ping"></span>
+        {/if}
+      </button>
+
+      <!-- Concordance Search (F3) Button -->
+      <button
+        type="button"
+        on:click={() => {
+          const sel = window.getSelection()?.toString().trim() || '';
+          concordanceInitialQuery = sel || ($selectedSegment?.source_text.slice(0, 60) || '');
+          isConcordanceOpen = true;
+        }}
+        class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+        title="Trados Concordance Search (F3)"
+      >
+        <span>📖 Concordance</span>
+        <kbd class="text-[9px] font-mono text-gray-400">F3</kbd>
+      </button>
     </div>
 
     <!-- Right: Tools Dropdown + Actions + Inspector + Preview + Progress -->
@@ -642,6 +759,30 @@
                 <div class="text-[10px] text-gray-400">Weighted word count & billing</div>
               </div>
             </button>
+
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleExportBilingualReviewDocx(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-blue-500 text-base">📄</span>
+              <div>
+                <div class="font-medium">Export Bilingual Review (.docx)</div>
+                <div class="text-[10px] text-gray-400">Trados-compatible external Word review</div>
+              </div>
+            </button>
+
+            <button
+              on:click={() => { isToolsMenuOpen = false; handleImportBilingualReviewDocx(); }}
+              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
+            >
+              <span class="text-amber-500 text-base">📥</span>
+              <div>
+                <div class="font-medium">Import Review Retrofit (.docx)</div>
+                <div class="text-[10px] text-gray-400">Apply reviewer edits & track changes</div>
+              </div>
+            </button>
           </div>
         {/if}
       </div>
@@ -714,6 +855,14 @@
     />
   {/if}
 
+  <!-- Advanced Display Filter 2.0 Studio Panel -->
+  {#if isAdvancedFilterOpen}
+    <AdvancedDisplayFilterPanel
+      isOpen={isAdvancedFilterOpen}
+      onClose={() => (isAdvancedFilterOpen = false)}
+    />
+  {/if}
+
   <!-- Grid + right panel -->
   <div class="flex flex-1 overflow-hidden">
 
@@ -731,8 +880,8 @@
       <div
         class="grid sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-800"
         style={$settings.layoutMode === 'stacked'
-          ? 'grid-template-columns: 2.75rem 1fr;'
-          : `grid-template-columns: 2.75rem minmax(200px, ${$settings.sourceRatio}%) minmax(200px, 1fr);`}
+          ? 'grid-template-columns: 3.25rem 1fr;'
+          : `grid-template-columns: 3.25rem minmax(200px, ${$settings.sourceRatio}%) minmax(200px, 1fr);`}
       >
         <div class="py-1.5 px-1 text-xs text-gray-400 text-center">#</div>
         {#if $settings.layoutMode === 'stacked'}
@@ -780,6 +929,7 @@
             onMergeNext={handleMergeNext}
             onMergePrev={handleMergePrev}
             onToggleBookmark={handleToggleBookmark}
+            onToggleLock={handleToggleLock}
             onAiRefineAction={handleAiRefineAction}
           />
         {/each}
@@ -1077,3 +1227,10 @@
     </div>
   </div>
 {/if}
+
+<ConcordanceModal
+  isOpen={isConcordanceOpen}
+  initialQuery={concordanceInitialQuery}
+  onInsert={handleInsertConcordance}
+  onClose={() => (isConcordanceOpen = false)}
+/>

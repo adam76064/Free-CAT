@@ -86,6 +86,16 @@ pub async fn toggle_bookmark(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn toggle_segment_lock(
+    segment_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let db = state.project_db.lock().unwrap();
+    db.toggle_segment_lock(&segment_id)
+        .map_err(|e| e.to_string())
+}
+
 #[derive(serde::Deserialize)]
 pub struct UpdateSegmentArgs {
     pub segment_id: String,

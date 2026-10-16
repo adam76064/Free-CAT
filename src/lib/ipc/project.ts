@@ -149,4 +149,32 @@ export async function importFcat(
   });
 }
 
+export interface BilingualRetrofitReport {
+  total_rows: number;
+  updated_count: number;
+  unchanged_count: number;
+}
+
+export async function exportBilingualReview(args: {
+  project_id: string;
+  file_id: string;
+  out_path?: string;
+}): Promise<string> {
+  return invoke('export_bilingual_review', {
+    projectId: args.project_id,
+    fileId: args.file_id,
+    outPath: args.out_path ?? null,
+  });
+}
+
+export async function importBilingualReview(args: {
+  file_id: string;
+  docx_path: string;
+}): Promise<BilingualRetrofitReport> {
+  return invoke('import_bilingual_review', {
+    fileId: args.file_id,
+    docxPath: args.docx_path,
+  });
+}
+
 

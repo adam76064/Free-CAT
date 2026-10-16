@@ -115,6 +115,118 @@ impl TmDb {
         Ok(())
     }
 
+    /// Paginated TU retrieval with optional search query for TM maintenance.
+    pub fn list_tus_paginated(
+        &self,
+        offset: usize,
+        limit: usize,
+        search: Option<&str>,
+    ) -> Result<(Vec<TranslationUnit>, usize)> {
+        let (tus, total_count) = if let Some(q) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let pattern = format!("%{}%", q);
+            let total: usize = self.conn.query_row(
+                "SELECT COUNT(*) FROM translation_units WHERE source_text LIKE ?1 OR target_text LIKE ?1",
+                params![pattern],
+                |r| r.get(0),
+            )?;
+            let mut stmt = self.conn.prepare(
+                "SELECT id, source_lang, target_lang, source_text, target_text,
+                        created_at, modified_at, created_by, client, domain,
+                        source_file, usage_count, metadata
+                 FROM translation_units
+                 WHERE source_text LIKE ?1 OR target_text LIKE ?1
+                 ORDER BY id DESC
+                 LIMIT ?2 OFFSET ?3"
+            )?;
+            let rows = stmt.query_map(params![pattern, limit as i64, offset as i64], |r| {
+                Ok(TranslationUnit {
+                    id:          Some(r.get(0)?),
+                    source_lang: r.get(1)?,
+                    target_lang: r.get(2)?,
+                    source_text: r.get(3)?,
+                    target_text: r.get(4)?,
+                    created_at:  r.get(5)?,
+                    modified_at: r.get(6)?,
+                    created_by:  r.get(7)?,
+                    client:      r.get(8)?,
+                    domain:      r.get(9)?,
+                    source_file: r.get(10)?,
+                    usage_count: r.get(11)?,
+                    metadata:    r.get(12)?,
+                })
+            })?;
+            let items: Vec<TranslationUnit> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            (items, total)
+        } else {
+            let total: usize = self.conn.query_row(
+                "SELECT COUNT(*) FROM translation_units",
+                [],
+                |r| r.get(0),
+            )?;
+            let mut stmt = self.conn.prepare(
+                "SELECT id, source_lang, target_lang, source_text, target_text,
+                        created_at, modified_at, created_by, client, domain,
+                        source_file, usage_count, metadata
+                 FROM translation_units
+                 ORDER BY id DESC
+                 LIMIT ?1 OFFSET ?2"
+            )?;
+            let rows = stmt.query_map(params![limit as i64, offset as i64], |r| {
+                Ok(TranslationUnit {
+                    id:          Some(r.get(0)?),
+                    source_lang: r.get(1)?,
+                    target_lang: r.get(2)?,
+                    source_text: r.get(3)?,
+                    target_text: r.get(4)?,
+                    created_at:  r.get(5)?,
+                    modified_at: r.get(6)?,
+                    created_by:  r.get(7)?,
+                    client:      r.get(8)?,
+                    domain:      r.get(9)?,
+                    source_file: r.get(10)?,
+                    usage_count: r.get(11)?,
+                    metadata:    r.get(12)?,
+                })
+            })?;
+            let items: Vec<TranslationUnit> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            (items, total)
+        };
+        Ok((tus, total_count))
+    }
+
+    /// Update an existing TU in place (triggers automatically sync FTS5).
+    pub fn update_tu(&self, id: i64, source_text: &str, target_text: &str) -> Result<()> {
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        self.conn.execute(
+            "UPDATE translation_units SET source_text = ?1, target_text = ?2, modified_at = ?3 WHERE id = ?4",
+            params![source_text, target_text, now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Batch find-and-replace across all translation units.
+    pub fn batch_replace(&self, find: &str, replace_with: &str, target_only: bool) -> Result<usize> {
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let affected = if target_only {
+            self.conn.execute(
+                "UPDATE translation_units
+                 SET target_text = REPLACE(target_text, ?1, ?2), modified_at = ?3
+                 WHERE target_text LIKE '%' || ?1 || '%'",
+                params![find, replace_with, now],
+            )?
+        } else {
+            self.conn.execute(
+                "UPDATE translation_units
+                 SET source_text = REPLACE(source_text, ?1, ?2),
+                     target_text = REPLACE(target_text, ?1, ?2),
+                     modified_at = ?3
+                 WHERE source_text LIKE '%' || ?1 || '%' OR target_text LIKE '%' || ?1 || '%'",
+                params![find, replace_with, now],
+            )?
+        };
+        Ok(affected)
+    }
+
     // ── Query ──────────────────────────────────────────────────────────────────
 
     /// Main TM lookup: FTS5 candidates → precise Levenshtein+Dice scoring.
@@ -321,3 +433,73 @@ impl std::fmt::Debug for TmDb {
         write!(f, "TmDb({})", self.name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tm_maintenance_operations() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("test_tm_maint_{}.db", uuid::Uuid::new_v4()));
+        let tm = TmDb::open("test-tm".into(), "Test TM".into(), db_path).unwrap();
+
+        let tu1 = TranslationUnit {
+            id: None,
+            source_lang: "en".into(),
+            target_lang: "fr".into(),
+            source_text: "Welcome to Acme Corp.".into(),
+            target_text: "Bienvenue chez Acme Corp.".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            modified_at: "2026-01-01T00:00:00Z".into(),
+            created_by: None,
+            client: None,
+            domain: None,
+            source_file: None,
+            usage_count: Some(1),
+            metadata: None,
+        };
+        let tu2 = TranslationUnit {
+            id: None,
+            source_lang: "en".into(),
+            target_lang: "fr".into(),
+            source_text: "Contact Acme Corp support.".into(),
+            target_text: "Contactez le support Acme Corp.".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            modified_at: "2026-01-01T00:00:00Z".into(),
+            created_by: None,
+            client: None,
+            domain: None,
+            source_file: None,
+            usage_count: Some(2),
+            metadata: None,
+        };
+        tm.upsert(&tu1).unwrap();
+        tm.upsert(&tu2).unwrap();
+
+        // 1. Paginated retrieval
+        let (tus, total) = tm.list_tus_paginated(0, 10, None).unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(tus.len(), 2);
+
+        // 2. Search
+        let (filtered, count) = tm.list_tus_paginated(0, 10, Some("support")).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(filtered[0].source_text, "Contact Acme Corp support.");
+
+        // 3. In-place update
+        let tu_id = filtered[0].id.unwrap();
+        tm.update_tu(tu_id, "Contact Acme Global support.", "Contactez le support Acme Global.").unwrap();
+        let (updated, _) = tm.list_tus_paginated(0, 10, Some("Global")).unwrap();
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].target_text, "Contactez le support Acme Global.");
+
+        // 4. Batch replace
+        let replaced = tm.batch_replace("Acme Corp", "Acme International", true).unwrap();
+        assert_eq!(replaced, 1);
+        let (all_tus, _) = tm.list_tus_paginated(0, 10, None).unwrap();
+        let found = all_tus.iter().any(|t| t.target_text.contains("Acme International"));
+        assert!(found);
+    }
+}
+

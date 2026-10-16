@@ -61,6 +61,7 @@ pub fn run() {
             commands::segment::split_segment,
             commands::segment::merge_segments,
             commands::segment::toggle_bookmark,
+            commands::segment::toggle_segment_lock,
             commands::segment::update_segment_comment,
             commands::segment::get_segment_history,
             commands::segment::get_combined_segments,
@@ -75,6 +76,10 @@ pub fn run() {
             commands::tm::delete_tm,
             commands::tm::get_tm_stats,
             commands::tm::concordance_search,
+            commands::tm::get_tm_tus_paginated,
+            commands::tm::update_tm_tu,
+            commands::tm::delete_tm_tu,
+            commands::tm::batch_replace_tm,
             // Termbase commands
             commands::termbase::query_tb,
             commands::termbase::add_term,
@@ -102,6 +107,8 @@ pub fn run() {
             commands::file_io::export_file,
             commands::file_io::import_sdlppx,
             commands::file_io::export_sdlrpx,
+            commands::file_io::export_bilingual_review,
+            commands::file_io::import_bilingual_review,
             // AI assistant commands
             commands::ai::query_ai_assistant,
             commands::ai::query_document_ai_copilot,

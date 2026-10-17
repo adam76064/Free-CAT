@@ -33,6 +33,8 @@
   import TqaDrawer from './TqaDrawer.svelte';
   import AutoTextManagerModal from './AutoTextManagerModal.svelte';
   import WebLookupModal from './WebLookupModal.svelte';
+  import StudioRibbon from './StudioRibbon.svelte';
+  import StudioResultsPane from './StudioResultsPane.svelte';
   import { autoTextEntries } from '$lib/stores/autotext';
   import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
@@ -47,8 +49,10 @@
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
   let gridContainer: HTMLDivElement;
-  let activeTab: 'tm' | 'tb' | 'qa' | 'ai' | 'comments' | 'preview' = 'tm';
-  let isInspectorOpen = true;
+  let isResultsPaneOpen = true;
+  let resultsPaneHeight = 150;
+  let isDrawerOpen = false;
+  let activeDrawerTab: 'qa' | 'comments' | 'ai' | 'preview' = 'qa';
   let isCommandPaletteOpen = false;
   let isTermExtractionOpen = false;
   let isQuoteInvoiceOpen = false;
@@ -398,7 +402,7 @@
       isReplaceOpen = true;
     } else if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
       e.preventDefault();
-      isInspectorOpen = !isInspectorOpen;
+      isDrawerOpen = !isDrawerOpen;
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       isCommandPaletteOpen = !isCommandPaletteOpen;
@@ -882,23 +886,89 @@
 </script>
 
 <div class="flex flex-col h-full relative">
-  <!-- Studio Toolbar -->
-  <div class="flex items-center justify-between px-3.5 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0 gap-3">
-    <!-- Left: Filter tabs + Search -->
+  <!-- 1. Studio Ribbon Bar across the top -->
+  <StudioRibbon
+    {isQuickInsertOpen}
+    {isResultsPaneOpen}
+    {isTtsPlaying}
+    hasSelectedSegment={!!$selectedSegment}
+    isSegmentLocked={$selectedSegment ? $selectedSegment.locked : false}
+    hasAutoPatch={!!activeAutoPatch}
+    on:confirm={() => { if ($selectedSegment) handleConfirm($selectedSegment); }}
+    on:copySource={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, $selectedSegment.source_text); }}
+    on:clearTarget={() => { if ($selectedSegment) handleTargetChange($selectedSegment.id, ''); }}
+    on:cycleCase={() => { /* SegmentRow Shift+F3 handles or dispatch */ }}
+    on:toggleLock={() => { if ($selectedSegment) handleToggleLock($selectedSegment.id); }}
+    on:toggleQuickInsert={() => (isQuickInsertOpen = !isQuickInsertOpen)}
+    on:openQuickPlace={() => { /* quickplace shortcut Ctrl+, */ }}
+    on:openFind={() => { isFindOpen = true; isReplaceOpen = false; }}
+    on:openReplace={() => { isFindOpen = true; isReplaceOpen = true; }}
+    on:pretranslate={handlePretranslate}
+    on:autoPatch={handleAutoPatchAll}
+    on:toggleTrackChanges={() => settings.update(s => ({ ...s, revisionMode: !s.revisionMode }))}
+    on:openTqa={() => (isTqaOpen = true)}
+    on:openQaDrawer={() => { isDrawerOpen = true; activeDrawerTab = 'qa'; handleRunQa(); }}
+    on:openNotesDrawer={() => { isDrawerOpen = true; activeDrawerTab = 'comments'; }}
+    on:exportDocx={handleExportBilingualReviewDocx}
+    on:importDocx={handleImportBilingualReviewDocx}
+    on:toggleAdvancedFilter={() => (isAdvancedFilterOpen = !isAdvancedFilterOpen)}
+    on:setLayout={(e) => settings.update(s => ({ ...s, layoutMode: e.detail }))}
+    on:zoomIn={() => settings.update(s => ({ ...s, fontSize: Math.min(24, s.fontSize + 1) }))}
+    on:zoomOut={() => settings.update(s => ({ ...s, fontSize: Math.max(12, s.fontSize - 1) }))}
+    on:toggleOpticalBoost={() => settings.update(s => ({ ...s, targetOpticalBoost: !s.targetOpticalBoost }))}
+    on:toggleResultsPane={() => (isResultsPaneOpen = !isResultsPaneOpen)}
+    on:openConcordance={() => {
+      const sel = window.getSelection()?.toString().trim() || '';
+      concordanceInitialQuery = sel || ($selectedSegment?.source_text.slice(0, 60) || '');
+      isConcordanceOpen = true;
+    }}
+    on:openWebLookup={() => {
+      const sel = window.getSelection()?.toString().trim() || '';
+      webLookupQuery = sel || ($selectedSegment?.source_text || '');
+      isWebLookupOpen = true;
+    }}
+    on:openAutoText={() => (isAutoTextOpen = true)}
+    on:openAte={() => (isTermExtractionOpen = true)}
+    on:openPseudoTranslate={() => (isPseudoTranslateOpen = true)}
+    on:openInvoice={() => (isQuoteInvoiceOpen = true)}
+    on:toggleTts={toggleTtsPlayback}
+    on:openFlowPreview={() => { isDrawerOpen = true; activeDrawerTab = 'preview'; }}
+    on:batchCopySource={handleBatchCopySourceToEmptyTarget}
+    on:batchClearDraft={handleBatchClearDraftTargets}
+    on:batchLockConfirmed={handleBatchLockConfirmed}
+    on:batchUnlockAll={handleBatchUnlockAll}
+  />
+
+  <!-- 2. Studio Upper Translation Results & Term Recognition Pane -->
+  <StudioResultsPane
+    isOpen={isResultsPaneOpen}
+    bind:height={resultsPaneHeight}
+    {activeAutoPatch}
+    on:applyTm={(e) => applyTmMatch(e.detail)}
+    on:applyAutoPatch={(e) => handleApplyAutoPatch(e.detail)}
+    on:insertTerm={(e) => handleInsertTerm(e.detail)}
+    on:openConcordance={() => (isConcordanceOpen = true)}
+    on:openTermManager={() => { /* goto /tb */ }}
+    on:close={() => (isResultsPaneOpen = false)}
+  />
+
+  <!-- 3. Compact Ergonomic Filter & Status Strip -->
+  <div class="h-8 px-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/80 flex items-center justify-between text-xs shrink-0 select-none">
+    <!-- Filter Tabs & Quick Search -->
     <div class="flex items-center gap-2 min-w-0">
-      <!-- Filter tabs -->
-      <div class="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 shrink-0">
+      <div class="flex items-center gap-0.5 bg-gray-200/60 dark:bg-gray-800/80 rounded p-0.5 shrink-0">
         {#each FILTERS as f}
           <button
+            type="button"
             on:click={() => filterMode.set(f.value)}
-            class="px-2.5 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5
+            class="px-2 py-0.5 text-[11px] rounded font-medium transition-colors flex items-center gap-1 cursor-pointer
                    {$filterMode === f.value
-                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-xs'
+                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-2xs font-bold'
                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
           >
             <span>{f.label}</span>
             {#if f.value === 'qa_warning' && $qaResults.length > 0}
-              <span class="px-1 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+              <span class="px-1 py-0.1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
                 {$qaResults.length}
               </span>
             {/if}
@@ -906,334 +976,40 @@
         {/each}
       </div>
 
-      <!-- Search input -->
       <div class="relative">
         <input
           bind:value={$segmentSearch}
           placeholder="Filter rows… (Ctrl+F)"
-          class="pl-7 pr-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700
-                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-40
-                 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          class="pl-6 pr-2 py-0.5 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white w-36 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
         />
-        <span class="absolute left-2.5 top-1.5 text-xs text-gray-400">🔍</span>
+        <span class="absolute left-1.5 top-1 text-[10px] text-gray-400">🔍</span>
       </div>
 
-      <!-- Advanced Display Filter 2.0 Button -->
       <button
         type="button"
         on:click={() => (isAdvancedFilterOpen = !isAdvancedFilterOpen)}
-        class="px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer
+        class="px-2 py-0.5 text-[11px] rounded border transition-colors flex items-center gap-1 cursor-pointer
                {$advancedFilter.isActive
-                 ? 'bg-brand-500 text-white border-brand-600 shadow-xs'
-                 : isAdvancedFilterOpen
-                   ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700'
-                   : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
-        title="Trados Advanced Display Filter 2.0 Studio"
+                 ? 'bg-brand-500 text-white border-brand-600 font-bold'
+                 : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+        title="Trados Advanced Display Filter 2.0"
       >
         <span>🎯 Filter 2.0</span>
         {#if $advancedFilter.isActive}
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-ping"></span>
         {/if}
       </button>
-
-      <!-- Concordance Search (F3) Button -->
-      <button
-        type="button"
-        on:click={() => {
-          const sel = window.getSelection()?.toString().trim() || '';
-          concordanceInitialQuery = sel || ($selectedSegment?.source_text.slice(0, 60) || '');
-          isConcordanceOpen = true;
-        }}
-        class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
-        title="Trados Concordance Search (F3)"
-      >
-        <span>📖 Concordance</span>
-        <kbd class="text-[9px] font-mono text-gray-400">F3</kbd>
-      </button>
-
-      <!-- QuickInsert Typographic Strip Toggle -->
-      <button
-        type="button"
-        on:click={() => (isQuickInsertOpen = !isQuickInsertOpen)}
-        class="px-2 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1 cursor-pointer
-               {isQuickInsertOpen
-                 ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
-                 : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
-        title="Toggle QuickInsert Typographic Bar (Ctrl+Shift+I)"
-      >
-        <span>⚡ QuickInsert</span>
-      </button>
-
-      <!-- Translation Quality Assessment (TQA) -->
-      <button
-        type="button"
-        on:click={() => (isTqaOpen = true)}
-        class="px-2 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
-        title="Translation Quality Assessment (TAUS DQF-MQM Framework)"
-      >
-        <span>🛡️ TQA</span>
-      </button>
-
-      <!-- Web Lookup! (Ctrl+F8 / Alt+W) -->
-      <button
-        type="button"
-        on:click={() => {
-          const sel = window.getSelection()?.toString().trim() || '';
-          webLookupQuery = sel || ($selectedSegment?.source_text.slice(0, 80) || '');
-          isWebLookupOpen = true;
-        }}
-        class="px-2 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
-        title="Web Lookup! Concordance & Dictionaries (Ctrl+F8 / Alt+W)"
-      >
-        <span>🌐 Web Lookup</span>
-      </button>
-
-      <!-- Text-to-Speech Acoustic Proofreader (Ctrl+Alt+R) -->
-      <button
-        type="button"
-        on:click={toggleTtsPlayback}
-        class="px-2 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1 cursor-pointer
-               {isTtsPlaying ? 'bg-purple-600 text-white border-purple-700 animate-pulse' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}"
-        title="Text-to-Speech Acoustic Proofreading (Ctrl+Alt+R)"
-      >
-        <span>{isTtsPlaying ? '⏸ Stop' : '🔊 Proofread'}</span>
-      </button>
     </div>
 
-    <!-- Right: Tools Dropdown + Actions + Inspector + Preview + Progress -->
-    <div class="flex items-center gap-2 shrink-0">
-      <!-- Tools Dropdown Menu -->
-      <div class="relative">
-        <button
-          on:click={() => (isToolsMenuOpen = !isToolsMenuOpen)}
-          class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700
-                 {isToolsMenuOpen ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
-                 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 shadow-xs"
-          title="Project Automation & Analysis Tools"
-        >
-          <span>⚡ Tools</span>
-          <span class="text-[10px] text-gray-400">▾</span>
-        </button>
-
-        {#if isToolsMenuOpen}
-          <!-- Backdrop to close -->
-          <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <!-- svelte-ignore a11y-no-static-element-interactions -->
-          <div class="fixed inset-0 z-40" on:click={() => (isToolsMenuOpen = false)}></div>
-
-          <div class="absolute right-0 mt-1.5 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl py-1 z-50 text-xs">
-            <button
-              on:click={() => { isToolsMenuOpen = false; handlePretranslate(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-amber-500 text-base">⚡</span>
-              <div>
-                <div class="font-medium">Pre-translate 100%</div>
-                <div class="text-[10px] text-gray-400">Auto-fill exact TM matches</div>
-              </div>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleAutoPatchAll(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-blue-500 text-base">🔧</span>
-              <div>
-                <div class="font-medium">Auto-Patch Fuzzy Matches</div>
-                <div class="text-[10px] text-gray-400">Batch repair numbers & terms (FMR)</div>
-              </div>
-            </button>
-
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isFindOpen = true; isReplaceOpen = false; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
-            >
-              <span class="flex items-center gap-2.5"><span>🔍</span> Find & Replace</span>
-              <kbd class="text-[10px] font-mono text-gray-400">Ctrl+H</kbd>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isTermExtractionOpen = true; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-purple-500 text-base">🏷️</span>
-              <div>
-                <div class="font-medium">Extract Terminology (ATE)</div>
-                <div class="text-[10px] text-gray-400">C-value candidate extraction</div>
-              </div>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isQuoteInvoiceOpen = true; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-emerald-500 text-base">💼</span>
-              <div>
-                <div class="font-medium">Quoting & Invoicing</div>
-                <div class="text-[10px] text-gray-400">Weighted word count & billing</div>
-              </div>
-            </button>
-
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleExportBilingualReviewDocx(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-blue-500 text-base">📄</span>
-              <div>
-                <div class="font-medium">Export Bilingual Review (.docx)</div>
-                <div class="text-[10px] text-gray-400">Trados-compatible external Word review</div>
-              </div>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleImportBilingualReviewDocx(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-amber-500 text-base">📥</span>
-              <div>
-                <div class="font-medium">Import Review Retrofit (.docx)</div>
-                <div class="text-[10px] text-gray-400">Apply reviewer edits & track changes</div>
-              </div>
-            </button>
-
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isPseudoTranslateOpen = true; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-pink-500 text-base">🧪</span>
-              <div>
-                <div class="font-medium">Pseudo-Translation Simulation</div>
-                <div class="text-[10px] text-gray-400">Pre-flight DTP expansion & diacritics test</div>
-              </div>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isTqaOpen = true; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-emerald-500 text-base">🛡️</span>
-              <div>
-                <div class="font-medium">Translation Quality Assessment (TQA)</div>
-                <div class="text-[10px] text-gray-400">TAUS DQF / MQM scorecard evaluation</div>
-              </div>
-            </button>
-
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; isAutoTextOpen = true; }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-amber-500 text-base">⚡</span>
-              <div>
-                <div class="font-medium">AutoText Shorthand Dictionary</div>
-                <div class="text-[10px] text-gray-400">Configure rapid abbreviations</div>
-              </div>
-            </button>
-
-            <button
-              on:click={() => {
-                isToolsMenuOpen = false;
-                const sel = window.getSelection()?.toString().trim() || '';
-                webLookupQuery = sel || ($selectedSegment?.source_text.slice(0, 80) || '');
-                isWebLookupOpen = true;
-              }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-cyan-500 text-base">🌐</span>
-              <div>
-                <div class="font-medium">Web Lookup! Concordance</div>
-                <div class="text-[10px] text-gray-400">IATE, Linguee, DeepL, ProZ (Alt+W)</div>
-              </div>
-            </button>
-
-            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleBatchCopySourceToEmptyTarget(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
-            >
-              <span class="flex items-center gap-2.5"><span class="text-blue-500">📋</span> Copy All Source to Empty Targets</span>
-              <kbd class="text-[9px] font-mono text-gray-400">Alt+Shift+Ins</kbd>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleBatchClearDraftTargets(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center justify-between"
-            >
-              <span class="flex items-center gap-2.5"><span class="text-red-500">🧹</span> Clear Draft Targets</span>
-              <kbd class="text-[9px] font-mono text-gray-400">Alt+Shift+Del</kbd>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleBatchLockConfirmed(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-rose-500">🔒</span>
-              <span>Lock Confirmed / 100% Matches</span>
-            </button>
-
-            <button
-              on:click={() => { isToolsMenuOpen = false; handleBatchUnlockAll(); }}
-              class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 flex items-center gap-2.5"
-            >
-              <span class="text-emerald-500">🔓</span>
-              <span>Unlock All Segments</span>
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Actions / Command Palette button -->
-      <button
-        on:click={() => (isCommandPaletteOpen = true)}
-        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-               text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5"
-        title="Omni Command Palette (Ctrl+K)"
-      >
-        <span>⚡ Actions</span>
-        <kbd class="text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 px-1 rounded border border-gray-200 dark:border-gray-700">Ctrl+K</kbd>
-      </button>
-
-      <!-- Toggle Inspector button -->
-      <button
-        on:click={() => (isInspectorOpen = !isInspectorOpen)}
-        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-               {isInspectorOpen ? 'bg-gray-100 dark:bg-gray-800 text-brand-600' : 'text-gray-700 dark:text-gray-300'}
-               hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-        title="Toggle Right Inspector (Ctrl+\)"
-      >
-        <span>⮌ Inspector</span>
-      </button>
-
-      <!-- Live Preview button -->
-      <button
-        on:click={() => {
-          activeTab = 'preview';
-          isInspectorOpen = true;
-        }}
-        class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
-               {isInspectorOpen && activeTab === 'preview' ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 border-brand-300' : 'text-gray-700 dark:text-gray-300'}
-               hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-        title="Live In-Context Document Flow Preview"
-      >
-        <span>👁 Preview</span>
-      </button>
-
-      <!-- Progress bar -->
-      <div class="flex items-center gap-1.5 pl-2 border-l border-gray-200 dark:border-gray-800">
-        <div class="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+    <!-- Right: Progress Telemetry -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+        <span>Progress:</span>
+        <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
           <div class="h-full bg-emerald-500 rounded-full transition-all" style="width: {$progressStats.pct}%"></div>
         </div>
-        <span class="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums font-mono">
-          {$progressStats.pct}%
-        </span>
+        <span class="tabular-nums font-mono font-bold text-gray-800 dark:text-gray-200">{$progressStats.pct}%</span>
+        <span class="text-[10px] text-gray-400">({$progressStats.translated}/{$progressStats.total})</span>
       </div>
     </div>
   </div>
@@ -1364,108 +1140,96 @@
       {/if}
     </div>
 
-    <!-- Right panel with tabs & draggable splitter -->
-    {#if isInspectorOpen}
+    <!-- Slide-over Inspector Drawer for QA, Comments/Notes, AI Discourse Copilot, and Flow Preview -->
+    {#if isDrawerOpen}
       <div
-        class="shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950 relative"
+        class="shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-950 relative shadow-xl z-20"
         style="width: {$settings.inspectorWidth}px;"
       >
         <!-- Left Draggable Splitter Handle -->
         <div
-          class="absolute -left-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-20 flex items-center justify-center opacity-60 hover:opacity-100"
+          class="absolute -left-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-30 flex items-center justify-center opacity-60 hover:opacity-100"
           on:pointerdown={handleStartInspectorResize}
-          title="Drag to resize Inspector panel"
+          title="Drag to resize Drawer"
         >
           <div class="w-0.5 h-4 bg-gray-400 dark:bg-gray-500 rounded"></div>
         </div>
 
-        <!-- Tab headers -->
-        <div class="flex items-center border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-1 py-1 gap-1 shrink-0 overflow-x-auto">
+        <!-- Drawer Header with Tabs & Close button -->
+        <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-gray-100/75 dark:bg-gray-900/90 px-2 py-1.5 shrink-0">
+          <div class="flex items-center gap-1 bg-gray-200/60 dark:bg-gray-800/80 rounded p-0.5">
+            <button
+              type="button"
+              on:click={() => (activeDrawerTab = 'qa')}
+              class="px-2 py-1 text-[11px] font-medium rounded transition-colors flex items-center gap-1 cursor-pointer
+                     {activeDrawerTab === 'qa'
+                       ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-2xs font-bold'
+                       : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}"
+            >
+              <span>✓ QA</span>
+              {#if $qaResults.length > 0}
+                <span class="w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                  {$qaResults.length}
+                </span>
+              {/if}
+            </button>
+            <button
+              type="button"
+              on:click={() => (activeDrawerTab = 'comments')}
+              class="px-2 py-1 text-[11px] font-medium rounded transition-colors flex items-center gap-1 cursor-pointer
+                     {activeDrawerTab === 'comments'
+                       ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-2xs font-bold'
+                       : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}"
+            >
+              <span>💬 Notes</span>
+              {#if $selectedSegment?.comment}
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+              {/if}
+            </button>
+            <button
+              type="button"
+              on:click={() => (activeDrawerTab = 'ai')}
+              class="px-2 py-1 text-[11px] font-medium rounded transition-colors flex items-center gap-1 cursor-pointer
+                     {activeDrawerTab === 'ai'
+                       ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-400 shadow-2xs font-bold'
+                       : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}"
+            >
+              <span>✨ AI</span>
+            </button>
+            <button
+              type="button"
+              on:click={() => (activeDrawerTab = 'preview')}
+              class="px-2 py-1 text-[11px] font-medium rounded transition-colors flex items-center gap-1 cursor-pointer
+                     {activeDrawerTab === 'preview'
+                       ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-2xs font-bold'
+                       : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}"
+            >
+              <span>👁 Flow</span>
+            </button>
+          </div>
+
           <button
-            on:click={() => (activeTab = 'tm')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors
-                   {activeTab === 'tm'
-                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+            type="button"
+            on:click={() => (isDrawerOpen = false)}
+            class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 text-xs font-bold cursor-pointer transition-colors"
+            title="Close Drawer"
           >
-            🧠 TM
-          </button>
-          <button
-            on:click={() => (activeTab = 'tb')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                   {activeTab === 'tb'
-                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-          >
-            <span>📖 Term</span>
-            {#if $termMatches.length > 0}
-              <span class="w-3.5 h-3.5 rounded-full bg-brand-500 text-white text-[9px] flex items-center justify-center">
-                {$termMatches.length}
-              </span>
-            {/if}
-          </button>
-          <button
-            on:click={() => (activeTab = 'qa')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                   {activeTab === 'qa'
-                     ? 'bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-          >
-            <span>✓ QA</span>
-            {#if $qaErrors.length > 0}
-              <span class="w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center">
-                {$qaErrors.length}
-              </span>
-            {/if}
-          </button>
-          <button
-            on:click={() => (activeTab = 'ai')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                   {activeTab === 'ai'
-                     ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-          >
-            <span>✨ AI</span>
-          </button>
-          <button
-            on:click={() => (activeTab = 'comments')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                   {activeTab === 'comments'
-                     ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-          >
-            <span>💬 Notes</span>
-            {#if $selectedSegment?.comment}
-              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-            {/if}
-          </button>
-          <button
-            on:click={() => (activeTab = 'preview')}
-            class="flex-1 py-1 px-1.5 text-[11px] font-medium rounded-md text-center transition-colors flex items-center justify-center gap-1
-                   {activeTab === 'preview'
-                     ? 'bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-          >
-            <span>👁 Flow</span>
+            ✕
           </button>
         </div>
 
-        <!-- Tab content -->
+        <!-- Drawer Tab content -->
         <div class="flex-1 overflow-hidden">
-          {#if activeTab === 'tm'}
-            <TmPanel onApply={applyTmMatch} />
-          {:else if activeTab === 'tb'}
-            <TbPanel onInsertTerm={handleInsertTerm} />
-          {:else if activeTab === 'qa'}
+          {#if activeDrawerTab === 'qa'}
             <QaPanel onJumpToSegment={jumpToSegment} onRunQa={handleRunQa} />
-          {:else if activeTab === 'ai'}
+          {:else if activeDrawerTab === 'comments'}
+            <CommentsPanel />
+          {:else if activeDrawerTab === 'ai'}
             <AiPanel onApplyTarget={(txt) => {
               const seg = $selectedSegment;
               if (seg) handleTargetChange(seg.id, txt);
             }} />
-          {:else if activeTab === 'comments'}
-            <CommentsPanel />
-          {:else if activeTab === 'preview'}
+          {:else if activeDrawerTab === 'preview'}
             <LivePreviewPanel onSelectSegment={(idx) => { selectedIndex.set(idx); scrollToSelected(); }} />
           {/if}
         </div>
@@ -1598,10 +1362,10 @@
 
 <CommandPalette
   isOpen={isCommandPaletteOpen}
-  onToggleInspector={() => (isInspectorOpen = !isInspectorOpen)}
+  onToggleInspector={() => (isDrawerOpen = !isDrawerOpen)}
   onTogglePreview={() => {
-    activeTab = 'preview';
-    isInspectorOpen = true;
+    activeDrawerTab = 'preview';
+    isDrawerOpen = true;
   }}
   onOpenFind={() => { isFindOpen = true; isReplaceOpen = false; }}
   onOpenReplace={() => { isFindOpen = true; isReplaceOpen = true; }}

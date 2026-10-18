@@ -9,6 +9,8 @@
   import { availableTms } from '$lib/stores/tm';
   import { listTms } from '$lib/ipc/tm';
   import QuoteInvoiceModal from '$lib/components/analysis/QuoteInvoiceModal.svelte';
+  import Icon from '$lib/components/ui/Icon.svelte';
+  import { toast } from '$lib/stores/toast';
 
   $: projectId = $page.params.id as string;
 
@@ -93,7 +95,7 @@
         file_ids: $currentFiles.map((f) => f.id),
       });
     } catch (e: any) {
-      error = `Import failed: ${e}`;
+      toast.error('Import Failed', String(e));
     } finally {
       importing = false;
     }
@@ -102,12 +104,11 @@
   async function handleExportSdlrpx() {
     if (!$currentProject) return;
     exportingSdlrpx = true;
-    error = '';
     try {
       const outPath = await exportSdlrpx({ project_id: $currentProject.id });
-      alert(`Exported Trados return package to: ${outPath}`);
+      toast.success('Trados Return Package Exported', outPath);
     } catch (e: any) {
-      error = `Return package export failed: ${e}`;
+      toast.error('Export Failed', String(e));
     } finally {
       exportingSdlrpx = false;
     }
@@ -116,14 +117,13 @@
   async function handleExportFcat() {
     if (!$currentProject) return;
     exportingFcat = true;
-    error = '';
     try {
       const sanitizedName = $currentProject.name.replace(/[^a-zA-Z0-9_-]/g, '_');
       const outPath = `${sanitizedName}.fcat`;
       await exportFcat($currentProject.id, outPath);
-      alert(`Project successfully exported to single-file .fcat archive:\n${outPath}`);
+      toast.success('Project Exported', `Saved to: ${outPath}`);
     } catch (e: any) {
-      error = `Exporting .fcat failed: ${e}`;
+      toast.error('Export Failed', String(e));
     } finally {
       exportingFcat = false;
     }
@@ -171,9 +171,9 @@
         project_id: $currentProject.id,
         out_path: chosenPath,
       });
-      alert(`Export Successful!\nTranslated document saved to:\n${outPath}`);
+      toast.success('Export Successful', `Saved to: ${outPath}`);
     } catch (e: any) {
-      alert(`Export failed: ${e}`);
+      toast.error('Export Failed', String(e));
     }
   }
 
@@ -215,72 +215,73 @@
     <div class="max-w-4xl mx-auto px-6 py-8">
 
       <!-- Breadcrumb + header -->
-      <div class="mb-8">
-        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-          <button on:click={() => goto('/')} class="hover:text-brand-500 transition-colors">Projects</button>
-          <span>/</span>
-          <span class="text-gray-900 dark:text-white font-medium">{$currentProject.name}</span>
-        </div>
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{$currentProject.name}</h1>
-            <div class="flex items-center gap-3 mt-1">
-              <span class="text-sm text-gray-500 dark:text-gray-400">
-                <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{$currentProject.src_lang}</span>
-                <span class="mx-1.5 text-gray-400">→</span>
-                <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{$currentProject.tgt_lang}</span>
-              </span>
-              <span class="text-xs text-gray-400">Modified {formatDate($currentProject.modified_at)}</span>
-            </div>
+      <div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-8">
+        <!-- Left: breadcrumb + name + lang pair -->
+        <div>
+          <div class="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
+            <button onclick={() => goto('/')} class="hover:text-brand-500 transition-colors cursor-pointer">Projects</button>
+            <Icon name="chevron-right" size={12} />
+            <span class="text-gray-700 dark:text-gray-200 font-medium">{$currentProject.name}</span>
           </div>
-          <div class="flex items-center gap-2">
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{$currentProject.name}</h1>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-800 text-xs shadow-2xs">
+              <span class="font-mono font-bold text-brand-700 dark:text-brand-300">{$currentProject.src_lang}</span>
+              <span class="text-brand-400 font-bold">→</span>
+              <span class="font-mono font-bold text-brand-700 dark:text-brand-300">{$currentProject.tgt_lang}</span>
+            </div>
+            <span class="text-xs text-gray-400">Modified {formatDate($currentProject.modified_at)}</span>
+          </div>
+        </div>
+
+        <!-- Right: hierarchical actions -->
+        <div class="flex flex-col items-start md:items-end gap-2.5 shrink-0">
+          <!-- Primary CTA -->
+          <button
+            onclick={handleImportFile}
+            disabled={importing}
+            class="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold text-sm rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Icon name="plus" size={16} />
+            <span>{importing ? 'Importing…' : 'Import Source File'}</span>
+          </button>
+
+          <!-- Secondary Actions Row -->
+          <div class="flex flex-wrap items-center gap-2">
             <button
-              on:click={() => showInvoiceModal = true}
-              class="px-3.5 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-                     hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200
-                     text-sm font-medium rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+              onclick={() => showInvoiceModal = true}
+              class="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-lg transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               title="Open Freelancer Quoting & Invoicing Suite"
             >
               <span>💼 Quoting & Invoicing</span>
             </button>
             <button
-              on:click={handleExportFcat}
+              onclick={handleExportFcat}
               disabled={exportingFcat}
-              class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50
-                     text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+              class="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 disabled:opacity-50 text-indigo-700 dark:text-indigo-300 text-xs font-semibold rounded-lg transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               title="Export complete project into a portable .fcat single-file archive"
             >
-              <span>{exportingFcat ? 'Packaging…' : '📦 Export .fcat'}</span>
+              <Icon name="package" size={13} />
+              <span>{exportingFcat ? 'Packaging…' : 'Export .fcat'}</span>
             </button>
             {#if analysis}
               <button
-                on:click={() => showAnalysisModal = true}
-                class="px-3.5 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-                       hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200
-                       text-sm font-medium rounded-lg transition-colors shadow-xs"
+                onclick={() => showAnalysisModal = true}
+                class="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-lg transition-colors shadow-2xs cursor-pointer"
               >
-                📊 Analysis Report
+                📊 Analysis
               </button>
             {/if}
             {#if $currentFiles.some(f => f.filename.endsWith('.sdlxliff') || f.format === 'sdlxliff')}
               <button
-                on:click={handleExportSdlrpx}
+                onclick={handleExportSdlrpx}
                 disabled={exportingSdlrpx}
-                class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50
-                       text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+                class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 dark:text-emerald-300 text-xs font-semibold rounded-lg transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 title="Create a Trados return package (.sdlrpx) for delivery"
               >
-                <span>{exportingSdlrpx ? 'Packing…' : '📦 Return Package (.sdlrpx)'}</span>
+                <span>{exportingSdlrpx ? 'Packing…' : 'Return (.sdlrpx)'}</span>
               </button>
             {/if}
-            <button
-              on:click={handleImportFile}
-              disabled={importing}
-              class="px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50
-                     text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-            >
-              {importing ? 'Importing…' : '+ Import File'}
-            </button>
           </div>
         </div>
       </div>
@@ -309,7 +310,7 @@
             {#if $currentFiles.length > 1}
               <button
                 type="button"
-                on:click={toggleSelectAllFiles}
+                onclick={toggleSelectAllFiles}
                 class="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium cursor-pointer"
               >
                 {selectedFileIds.length === $currentFiles.length ? 'Deselect All' : 'Select All'}
@@ -320,7 +321,7 @@
           {#if selectedFileIds.length > 1}
             <button
               type="button"
-              on:click={openCombinedEditor}
+              onclick={openCombinedEditor}
               class="px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer animate-in fade-in"
             >
               <span>🗂️ Translate Combined ({selectedFileIds.length} files) →</span>
@@ -339,7 +340,7 @@
               Support Word (.docx), HTML (.html), Markdown (.md), Subtitles (.srt/.vtt), XLIFF, PO, and TXT.
             </p>
             <button
-              on:click={handleImportFile}
+              onclick={handleImportFile}
               class="mt-2 px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-medium rounded-lg transition-colors"
             >
               Import your first file
@@ -355,7 +356,7 @@
                 <input
                   type="checkbox"
                   checked={selectedFileIds.includes(file.id)}
-                  on:change={() => toggleFileSelect(file.id)}
+                  onchange={() => toggleFileSelect(file.id)}
                   class="rounded accent-brand-500 w-4 h-4 cursor-pointer"
                   title="Select for combined translation"
                 />
@@ -369,7 +370,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <button
-                    on:click={() => handleExportSingleFile(file)}
+                    onclick={() => handleExportSingleFile(file)}
                     class="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-700
                            hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg transition-colors shadow-xs"
                     title="Export translated file to your computer"
@@ -377,7 +378,7 @@
                     ⬇ Export
                   </button>
                   <button
-                    on:click={() => openEditor(file.id)}
+                    onclick={() => openEditor(file.id)}
                     class="px-3.5 py-1.5 text-sm font-medium bg-brand-500 hover:bg-brand-600
                            text-white rounded-lg transition-colors shadow-xs"
                   >
@@ -405,7 +406,7 @@
           </p>
         </div>
         <button
-          on:click={() => showAnalysisModal = false}
+          onclick={() => showAnalysisModal = false}
           class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm p-1 rounded"
         >
           ✕
@@ -475,7 +476,7 @@
 
       <div class="flex justify-end">
         <button
-          on:click={() => showAnalysisModal = false}
+          onclick={() => showAnalysisModal = false}
           class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-xs font-medium rounded-lg transition-colors"
         >
           Close Report

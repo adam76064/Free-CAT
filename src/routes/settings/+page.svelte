@@ -86,9 +86,132 @@
       </div>
     </section>
 
+    <!-- Quality Assurance -->
+    <section class="mb-8">
+      <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Quality Assurance</h2>
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Auto-run QA on Confirm</div>
+            <div class="text-xs text-gray-500">Run QA checks automatically each time a segment is confirmed</div>
+          </div>
+          <input type="checkbox" bind:checked={s.autoRunQa} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Check Numbers</div>
+            <div class="text-xs text-gray-500">Flag mismatched numbers between source and target</div>
+          </div>
+          <input type="checkbox" bind:checked={s.qaCheckNumbers} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Check Punctuation</div>
+            <div class="text-xs text-gray-500">Flag missing final punctuation (period, question, exclamation)</div>
+          </div>
+          <input type="checkbox" bind:checked={s.qaCheckPunctuation} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Check Double Spaces</div>
+            <div class="text-xs text-gray-500">Flag double or leading/trailing spaces in target</div>
+          </div>
+          <input type="checkbox" bind:checked={s.qaCheckDoubleSpaces} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Check Tag Integrity</div>
+            <div class="text-xs text-gray-500">Flag missing or extra inline tags {'{1}'}, {'{/1}'} etc.</div>
+          </div>
+          <input type="checkbox" bind:checked={s.qaCheckTags} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Translation Workflow -->
+    <section class="mb-8">
+      <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Translation Workflow</h2>
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Auto-Propagate Confirmed Segments</div>
+            <div class="text-xs text-gray-500">Automatically fill identical source segments when one is confirmed</div>
+          </div>
+          <input type="checkbox" bind:checked={s.autoPropagate} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Revision Mode (Track Changes)</div>
+            <div class="text-xs text-gray-500">Show redline diff of edits against original confirmed target text</div>
+          </div>
+          <input type="checkbox" bind:checked={s.revisionMode} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Optical Font Boost for RTL/CJK</div>
+            <div class="text-xs text-gray-500">Add +2px to target font size for Arabic, Hebrew, CJK scripts</div>
+          </div>
+          <input type="checkbox" bind:checked={s.targetOpticalBoost} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">Spellcheck / Linter</div>
+            <div class="text-xs text-gray-500">Enable native OS spellcheck on target segments</div>
+          </div>
+          <input type="checkbox" bind:checked={s.spellcheckEnabled} class="rounded accent-brand-500 w-4 h-4" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Keyboard Shortcuts Reference -->
+    <section class="mb-8">
+      <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Keyboard Shortcuts</h2>
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-gray-50 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 uppercase font-semibold">
+            <tr>
+              <th class="py-2.5 px-4 text-left">Action</th>
+              <th class="py-2.5 px-4 text-right">Shortcut</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-300">
+            {#each [
+              ['Confirm Segment & Advance', 'Tab / Enter'],
+              ['Find in File', 'Ctrl+F'],
+              ['Find & Replace', 'Ctrl+H'],
+              ['Copy Source to Target', 'Ctrl+Shift+S'],
+              ['Clear Target', 'Alt+Delete'],
+              ['Cycle Case (lower/UPPER/Title)', 'Shift+F3'],
+              ['Toggle Segment Lock', 'Ctrl+L'],
+              ['Toggle Bookmark', 'Ctrl+B'],
+              ['Merge with Next Segment', 'Ctrl+J'],
+              ['Merge with Previous Segment', 'Ctrl+Shift+J'],
+              ['Split Segment', 'Ctrl+Alt+S'],
+              ['QuickPlace Tag HUD', 'Ctrl+,'],
+              ['Edit Source Text', 'Alt+F2'],
+              ['Accept Revision', 'Ctrl+Shift+A'],
+              ['Reject Revision', 'Ctrl+Shift+R'],
+              ['Command Palette', 'Ctrl+K'],
+              ['Pre-Translate File', 'Ctrl+F8'],
+              ['Run QA Check', 'Ctrl+Alt+R'],
+              ['Filter: Show All Segments', 'Ctrl+\\'],
+              ['Focus Filter Bar', 'F6'],
+            ] as [action, shortcut]}
+              <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                <td class="py-2 px-4">{action}</td>
+                <td class="py-2 px-4 text-right">
+                  <kbd class="font-mono text-[11px] bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">{shortcut}</kbd>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Save button -->
     <button
-      on:click={save}
+      onclick={save}
       class="w-full px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition-colors"
     >
       Save Settings

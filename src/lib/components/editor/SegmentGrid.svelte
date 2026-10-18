@@ -45,6 +45,7 @@
   import { runQa, preTranslate, exportBilingualReview, importBilingualReview } from '$lib/ipc/project';
   import { open } from '@tauri-apps/plugin-dialog';
   import { queryAiAssistant } from '$lib/ipc/ai';
+  import { toast } from '$lib/stores/toast';
 
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
@@ -341,7 +342,7 @@
         count++;
       }
     }
-    alert(`Batch Copy Source: ${count} empty segments filled with source text.`);
+    toast.success('Batch Copy Source', `${count} empty segments filled with source text.`);
   }
 
   async function handleBatchClearDraftTargets() {
@@ -361,7 +362,7 @@
         count++;
       }
     }
-    alert(`Batch Clear: ${count} draft segments cleared.`);
+    toast.success('Batch Clear', `${count} draft segments cleared.`);
   }
 
   async function handleBatchLockConfirmed() {
@@ -374,7 +375,7 @@
         count++;
       }
     }
-    alert(`Batch Lock: ${count} confirmed/100% segments locked.`);
+    toast.success('Batch Lock', `${count} confirmed/100% segments locked.`);
   }
 
   async function handleBatchUnlockAll() {
@@ -387,7 +388,7 @@
         count++;
       }
     }
-    alert(`Batch Unlock: ${count} segments unlocked.`);
+    toast.success('Batch Unlock', `${count} segments unlocked.`);
   }
 
   // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K, Ctrl+L, F2, F3, F6, Ctrl+F8, Ctrl+Alt+R)
@@ -538,7 +539,7 @@
         }
       }
     }
-    alert(`Auto-patch complete: ${patchedCount} fuzzy segments repaired and filled!`);
+    toast.success('Auto-Patch Complete', `${patchedCount} fuzzy segments repaired and filled.`);
   }
 
   async function lookupTb(sourceText: string) {
@@ -707,7 +708,7 @@
       segments.set(reloaded);
       segmentToSplit = null;
     } catch (e: any) {
-      alert(`Split segment failed: ${e}`);
+      toast.error('Split Failed', String(e));
     }
   }
 
@@ -725,7 +726,7 @@
       const reloaded = await getSegments($currentFile.id, $currentProject.id);
       segments.set(reloaded);
     } catch (e: any) {
-      alert(`Merge failed: ${e}`);
+      toast.error('Merge Failed', String(e));
     }
   }
 
@@ -742,7 +743,7 @@
       const reloaded = await getSegments($currentFile.id, $currentProject.id);
       segments.set(reloaded);
     } catch (e: any) {
-      alert(`Merge failed: ${e}`);
+      toast.error('Merge Failed', String(e));
     }
   }
 
@@ -771,7 +772,7 @@
       const updated = await editSourceSegment({ segment_id: segId, source_text: newSource });
       updateSegmentInStore(segId, { source_text: updated.source_text });
     } catch (e: any) {
-      alert(`Failed to update source segment: ${e}`);
+      toast.error('Source Update Failed', String(e));
     }
   }
 
@@ -832,7 +833,7 @@
       });
       const reloaded = await getSegments($currentFile.id, $currentProject.id);
       segments.set(reloaded);
-      alert(`Pre-translation complete: ${res.pretranslated} segments filled!`);
+      toast.success('Pre-Translation Complete', `${res.pretranslated} segments filled.`);
     } catch (e) {
       console.error('Pre-translate failed:', e);
     } finally {
@@ -847,9 +848,9 @@
         project_id: $currentProject.id,
         file_id: $currentFile.id,
       });
-      alert(`Bilingual review Word document exported successfully:\n${out}`);
+      toast.success('Bilingual Review Exported', out);
     } catch (e: any) {
-      alert(`Failed to export bilingual review document: ${e}`);
+      toast.error('Export Failed', String(e));
     }
   }
 
@@ -868,9 +869,9 @@
       });
       const fresh = await getSegments($currentFile.id, $currentProject.id);
       segments.set(fresh);
-      alert(`Retrofit Import Complete!\n• ${res.updated_count} segments updated\n• ${res.unchanged_count} segments unchanged`);
+      toast.success('Retrofit Import Complete', `${res.updated_count} updated, ${res.unchanged_count} unchanged.`);
     } catch (e: any) {
-      alert(`Retrofit import failed: ${e}`);
+      toast.error('Import Failed', String(e));
     }
   }
 

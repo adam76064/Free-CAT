@@ -70,7 +70,7 @@
     <div class="flex items-center gap-0.5">
       <button
         type="button"
-        on:click={() => { activeTab = 'home'; if (isCollapsed) isCollapsed = false; }}
+        onclick={() => { activeTab = 'home'; if (isCollapsed) isCollapsed = false; }}
         class="px-3 py-1 text-xs font-semibold rounded-t-md transition-colors cursor-pointer
                {activeTab === 'home' && !isCollapsed
                  ? 'bg-white dark:bg-gray-900 text-brand-600 dark:text-brand-400 border-t-2 border-brand-500 shadow-2xs'
@@ -81,7 +81,7 @@
 
       <button
         type="button"
-        on:click={() => { activeTab = 'review'; if (isCollapsed) isCollapsed = false; }}
+        onclick={() => { activeTab = 'review'; if (isCollapsed) isCollapsed = false; }}
         class="px-3 py-1 text-xs font-semibold rounded-t-md transition-colors cursor-pointer
                {activeTab === 'review' && !isCollapsed
                  ? 'bg-white dark:bg-gray-900 text-brand-600 dark:text-brand-400 border-t-2 border-brand-500 shadow-2xs'
@@ -92,7 +92,7 @@
 
       <button
         type="button"
-        on:click={() => { activeTab = 'view'; if (isCollapsed) isCollapsed = false; }}
+        onclick={() => { activeTab = 'view'; if (isCollapsed) isCollapsed = false; }}
         class="px-3 py-1 text-xs font-semibold rounded-t-md transition-colors cursor-pointer
                {activeTab === 'view' && !isCollapsed
                  ? 'bg-white dark:bg-gray-900 text-brand-600 dark:text-brand-400 border-t-2 border-brand-500 shadow-2xs'
@@ -103,7 +103,7 @@
 
       <button
         type="button"
-        on:click={() => { activeTab = 'tools'; if (isCollapsed) isCollapsed = false; }}
+        onclick={() => { activeTab = 'tools'; if (isCollapsed) isCollapsed = false; }}
         class="px-3 py-1 text-xs font-semibold rounded-t-md transition-colors cursor-pointer
                {activeTab === 'tools' && !isCollapsed
                  ? 'bg-white dark:bg-gray-900 text-brand-600 dark:text-brand-400 border-t-2 border-brand-500 shadow-2xs'
@@ -117,7 +117,7 @@
     <div class="flex items-center gap-1.5">
       <button
         type="button"
-        on:click={() => dispatch('toggleResultsPane')}
+        onclick={() => dispatch('toggleResultsPane')}
         class="px-2 py-0.5 text-[11px] rounded font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
         title="Toggle Upper Translation Results & Term Recognition Pane"
       >
@@ -126,7 +126,7 @@
 
       <button
         type="button"
-        on:click={toggleCollapse}
+        onclick={toggleCollapse}
         class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 text-xs transition-transform cursor-pointer"
         title={isCollapsed ? 'Expand Ribbon' : 'Collapse Ribbon (Double-click or click)'}
       >
@@ -143,8 +143,9 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('confirm')}
-            class="flex flex-col items-center justify-center px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer group"
+            onclick={() => dispatch('confirm')}
+            disabled={!hasSelectedSegment}
+            class="flex flex-col items-center justify-center px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer group"
             title="Confirm Segment & Add to TM (Ctrl+Enter)"
           >
             <span class="text-emerald-600 dark:text-emerald-400 text-base leading-none">✓</span>
@@ -154,7 +155,7 @@
           <div class="flex flex-col gap-1">
             <button
               type="button"
-              on:click={() => dispatch('copySource')}
+              onclick={() => dispatch('copySource')}
               class="px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
               title="Copy Source to Target (Ctrl+Shift+S)"
             >
@@ -163,7 +164,7 @@
             </button>
             <button
               type="button"
-              on:click={() => dispatch('clearTarget')}
+              onclick={() => dispatch('clearTarget')}
               class="px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
               title="Clear Target Segment (Alt+Del)"
             >
@@ -178,7 +179,7 @@
           <div class="flex flex-col gap-1">
             <button
               type="button"
-              on:click={() => dispatch('openQuickPlace')}
+              onclick={() => dispatch('openQuickPlace')}
               class="px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
               title="QuickPlace Tags, Numbers, Dates (Ctrl+,)"
             >
@@ -187,7 +188,7 @@
             </button>
             <button
               type="button"
-              on:click={() => dispatch('toggleQuickInsert')}
+              onclick={() => dispatch('toggleQuickInsert')}
               class="px-2 py-0.5 rounded text-[11px] transition-colors flex items-center gap-1 cursor-pointer
                      {isQuickInsertOpen ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200 font-bold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
               title="Toggle QuickInsert Typographic Bar (Ctrl+Shift+I)"
@@ -200,7 +201,7 @@
           <div class="flex flex-col gap-1">
             <button
               type="button"
-              on:click={() => dispatch('cycleCase')}
+              onclick={() => dispatch('cycleCase')}
               class="px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
               title="Cycle Case (Shift+F3)"
             >
@@ -209,7 +210,7 @@
             </button>
             <button
               type="button"
-              on:click={() => dispatch('toggleLock')}
+              onclick={() => dispatch('toggleLock')}
               class="px-2 py-0.5 rounded text-[11px] transition-colors flex items-center gap-1 cursor-pointer
                      {isSegmentLocked ? 'text-rose-600 font-bold bg-rose-50 dark:bg-rose-950/40' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
               title="Lock/Unlock Segment (Ctrl+L)"
@@ -224,7 +225,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('pretranslate')}
+            onclick={() => dispatch('pretranslate')}
             class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
             title="Pre-translate 100% exact matches across document"
           >
@@ -234,8 +235,9 @@
 
           <button
             type="button"
-            on:click={() => dispatch('autoPatch')}
-            class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            onclick={() => dispatch('autoPatch')}
+            class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg border transition-colors cursor-pointer
+                   {hasAutoPatch ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/50 shadow-2xs font-semibold' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'}"
             title="Auto-Patch fuzzy matches with FMR number/term substitution"
           >
             <span class="text-blue-500 text-sm leading-none">🔧</span>
@@ -247,7 +249,7 @@
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openFind')}
+            onclick={() => dispatch('openFind')}
             class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
             title="Find & Replace in Document (Ctrl+F / Ctrl+H)"
           >
@@ -257,7 +259,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('openConcordance')}
+            onclick={() => dispatch('openConcordance')}
             class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 cursor-pointer"
             title="TM Concordance Search (F3)"
           >
@@ -271,7 +273,7 @@
         <div class="flex items-center gap-2 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('toggleTrackChanges')}
+            onclick={() => dispatch('toggleTrackChanges')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer
                    {$settings.revisionMode ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 font-bold' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50'}"
             title="Toggle Track Changes / Revision Mode"
@@ -288,7 +290,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openQaDrawer')}
+            onclick={() => dispatch('openQaDrawer')}
             class="flex flex-col items-center justify-center px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
             title="Run QA Checker 3.0 Verification"
           >
@@ -298,7 +300,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('openTqa')}
+            onclick={() => dispatch('openTqa')}
             class="flex flex-col items-center justify-center px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
             title="TAUS DQF-MQM Translation Quality Assessment Scorecard"
           >
@@ -311,7 +313,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('exportDocx')}
+            onclick={() => dispatch('exportDocx')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Export 4-column Bilingual Word Table (.docx) for external reviewer"
           >
@@ -321,7 +323,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('importDocx')}
+            onclick={() => dispatch('importDocx')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Import Review Retrofit (.docx) & update modified segments"
           >
@@ -334,7 +336,7 @@
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openNotesDrawer')}
+            onclick={() => dispatch('openNotesDrawer')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="View or Add Segment Note & Audit History"
           >
@@ -348,7 +350,7 @@
         <div class="flex items-center gap-1 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('setLayout', 'side-by-side')}
+            onclick={() => dispatch('setLayout', 'side-by-side')}
             class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer
                    {$settings.layoutMode === 'side-by-side' ? 'bg-brand-500 text-white font-bold shadow-2xs' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
           >
@@ -356,7 +358,7 @@
           </button>
           <button
             type="button"
-            on:click={() => dispatch('setLayout', 'stacked')}
+            onclick={() => dispatch('setLayout', 'stacked')}
             class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer
                    {$settings.layoutMode === 'stacked' ? 'bg-brand-500 text-white font-bold shadow-2xs' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
           >
@@ -364,7 +366,7 @@
           </button>
           <button
             type="button"
-            on:click={() => dispatch('setLayout', 'zen')}
+            onclick={() => dispatch('setLayout', 'zen')}
             class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer
                    {$settings.layoutMode === 'zen' ? 'bg-purple-600 text-white font-bold shadow-2xs' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
           >
@@ -376,7 +378,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('toggleAdvancedFilter')}
+            onclick={() => dispatch('toggleAdvancedFilter')}
             class="px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer
                    {$advancedFilter.isActive ? 'bg-brand-500 text-white border-brand-600 font-bold' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50'}"
             title="Trados Advanced Display Filter 2.0 Studio"
@@ -393,21 +395,21 @@
           <span class="text-[10px] text-gray-400 font-medium">Font:</span>
           <button
             type="button"
-            on:click={() => dispatch('zoomOut')}
+            onclick={() => dispatch('zoomOut')}
             class="w-6 h-6 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 font-bold cursor-pointer"
             title="Decrease font size"
           >-</button>
           <span class="font-mono text-xs px-1 font-semibold">{$settings.fontSize}px</span>
           <button
             type="button"
-            on:click={() => dispatch('zoomIn')}
+            onclick={() => dispatch('zoomIn')}
             class="w-6 h-6 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 font-bold cursor-pointer"
             title="Increase font size"
           >+</button>
 
           <button
             type="button"
-            on:click={() => dispatch('toggleOpticalBoost')}
+            onclick={() => dispatch('toggleOpticalBoost')}
             class="ml-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer
                    {$settings.targetOpticalBoost ? 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-200 font-bold' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700'}"
             title="Optical Font Boost (+2px for non-Latin / RTL scripts)"
@@ -420,7 +422,7 @@
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openFlowPreview')}
+            onclick={() => dispatch('openFlowPreview')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Toggle Live In-Context Flow Preview"
           >
@@ -433,7 +435,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openWebLookup')}
+            onclick={() => dispatch('openWebLookup')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Web Lookup! Concordance across IATE, DeepL, Linguee, ProZ (Ctrl+F8 / Alt+W)"
           >
@@ -444,7 +446,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('openAutoText')}
+            onclick={() => dispatch('openAutoText')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="AutoText Shorthand & Abbreviation Dictionary Manager"
           >
@@ -457,7 +459,7 @@
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('openAte')}
+            onclick={() => dispatch('openAte')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Automatic Terminology Extraction (C-Value)"
           >
@@ -467,7 +469,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('openPseudoTranslate')}
+            onclick={() => dispatch('openPseudoTranslate')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Pre-flight Pseudo-Translation Simulation"
           >
@@ -477,7 +479,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('openInvoice')}
+            onclick={() => dispatch('openInvoice')}
             class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Quoting & Invoicing (Weighted Analysis Bands)"
           >
@@ -490,7 +492,7 @@
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            on:click={() => dispatch('toggleTts')}
+            onclick={() => dispatch('toggleTts')}
             class="px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer
                    {isTtsPlaying ? 'bg-purple-600 text-white border-purple-700 animate-pulse font-bold' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50'}"
             title="Acoustic Proofreading Speech Synthesis (Ctrl+Alt+R)"
@@ -501,7 +503,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('batchCopySource')}
+            onclick={() => dispatch('batchCopySource')}
             class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 text-[11px] transition-colors cursor-pointer"
             title="Copy Source to all Empty Target Segments (Alt+Shift+Insert)"
           >
@@ -510,7 +512,7 @@
 
           <button
             type="button"
-            on:click={() => dispatch('batchLockConfirmed')}
+            onclick={() => dispatch('batchLockConfirmed')}
             class="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 text-[11px] transition-colors cursor-pointer"
             title="Lock All Confirmed / 100% Segments"
           >

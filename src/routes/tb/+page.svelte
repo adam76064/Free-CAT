@@ -6,6 +6,8 @@
     listTbs, createTb, deleteTb, importTbx, exportTbx, getTerms, addTerm, deleteTerm,
     type TbInfo, type TermEntry
   } from '$lib/ipc/termbase';
+  import { toast } from '$lib/stores/toast';
+  import Icon from '$lib/components/ui/Icon.svelte';
 
   let termbases = $state<TbInfo[]>([]);
   let selectedTbId = $state<string | null>(null);
@@ -80,8 +82,9 @@
       if (created?.id) {
         await selectTb(created.id);
       }
+      toast.success('Termbase Created', `Created termbase "${newTbName.trim()}"`);
     } catch (e) {
-      alert(`Failed to create termbase: ${e}`);
+      toast.error('Creation Failed', String(e));
     } finally {
       creatingTb = false;
     }
@@ -96,8 +99,9 @@
         terms = [];
       }
       await loadTermbases();
+      toast.success('Termbase Deleted', `Removed "${tb.name}".`);
     } catch (e) {
-      alert(`Failed to delete termbase: ${e}`);
+      toast.error('Delete Failed', String(e));
     }
   }
 
@@ -109,13 +113,13 @@
     if (!path || typeof path !== 'string') return;
     try {
       const count = await importTbx(tbId, path);
-      alert(`Successfully imported ${count} terms!`);
+      toast.success('TBX Imported', `Successfully imported ${count} terms.`);
       await loadTermbases();
       if (selectedTbId === tbId) {
         await selectTb(tbId);
       }
     } catch (e) {
-      alert(`Failed to import TBX: ${e}`);
+      toast.error('Import Failed', String(e));
     }
   }
 
@@ -127,9 +131,9 @@
     if (!path) return;
     try {
       const count = await exportTbx(tb.id, path);
-      alert(`Exported ${count} terms to ${path}`);
+      toast.success('TBX Exported', `Exported ${count} terms to ${path}`);
     } catch (e) {
-      alert(`Failed to export TBX: ${e}`);
+      toast.error('Export Failed', String(e));
     }
   }
 
@@ -147,14 +151,16 @@
         note: newTermNote.trim() || undefined,
       });
       showAddTermModal = false;
+      const addedText = newTermText.trim();
       newTermText = '';
       newTermDef = '';
       newTermDomain = '';
       newTermNote = '';
       await selectTb(selectedTbId);
       await loadTermbases();
+      toast.success('Term Added', `Saved "${addedText}".`);
     } catch (e) {
-      alert(`Failed to add term: ${e}`);
+      toast.error('Save Failed', String(e));
     } finally {
       addingTerm = false;
     }
@@ -166,8 +172,9 @@
       await deleteTerm(selectedTbId, termId);
       await selectTb(selectedTbId);
       await loadTermbases();
+      toast.success('Term Deleted', 'Term removed from termbase.');
     } catch (e) {
-      alert(`Failed to delete term: ${e}`);
+      toast.error('Delete Failed', String(e));
     }
   }
 

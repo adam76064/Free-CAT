@@ -204,8 +204,9 @@
 
           <!-- Category Selection -->
           <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MQM Category</label>
+            <label for="tqa-cat" class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MQM Category</label>
             <select
+              id="tqa-cat"
               bind:value={category}
               class="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-750 text-gray-900 dark:text-white focus:ring-1 focus:ring-brand-500"
             >
@@ -217,8 +218,9 @@
 
           <!-- Sub-Type Selection -->
           <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Issue Type</label>
+            <label for="tqa-subtype" class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Issue Type</label>
             <select
+              id="tqa-subtype"
               bind:value={subType}
               class="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-750 text-gray-900 dark:text-white focus:ring-1 focus:ring-brand-500"
             >
@@ -230,7 +232,7 @@
 
           <!-- Severity Selection -->
           <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Severity & Weight</label>
+            <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block">Severity & Weight</span>
             <div class="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
@@ -261,8 +263,9 @@
 
           <!-- Comment Textarea -->
           <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Reviewer Comment</label>
+            <label for="tqa-comment" class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Reviewer Comment</label>
             <textarea
+              id="tqa-comment"
               bind:value={comment}
               rows="2"
               placeholder="e.g. Inaccurate translation of technical term 'latch'..."

@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import { alignTexts, alignFiles, exportAlignmentTmx, importAlignmentToTm, type AlignedPair } from '$lib/ipc/aligner';
   import { listTms, type TmInfo } from '$lib/ipc/tm';
+  import { toast } from '$lib/stores/toast';
 
   let srcLang = 'en';
   let tgtLang = 'ar';
@@ -19,8 +20,6 @@
   let aligning = false;
   let exporting = false;
   let importing = false;
-  let statusMessage = '';
-  let errorMessage = '';
 
   let pairs: AlignedPair[] = [];
   let availableTmsList: TmInfo[] = [];
@@ -54,8 +53,6 @@
   }
 
   async function handleRunAlignment() {
-    errorMessage = '';
-    statusMessage = '';
     aligning = true;
     try {
       if (mode === 'text') {
@@ -79,9 +76,9 @@
           tgt_lang: tgtLang,
         });
       }
-      statusMessage = `Successfully aligned ${pairs.length} sentence pairs.`;
+      toast.success('Alignment Complete', `Successfully aligned ${pairs.length} sentence pairs.`);
     } catch (e: any) {
-      errorMessage = String(e);
+      toast.error('Alignment Failed', String(e));
     } finally {
       aligning = false;
     }
@@ -124,8 +121,6 @@
   async function handleExportTmx() {
     if (pairs.length === 0) return;
     exporting = true;
-    errorMessage = '';
-    statusMessage = '';
     try {
       const outputPath = `aligned_${Date.now()}.tmx`;
       await exportAlignmentTmx({
@@ -134,9 +129,9 @@
         tgt_lang: tgtLang,
         output_path: outputPath,
       });
-      statusMessage = `Exported clean TMX 1.4b to: ${outputPath}`;
+      toast.success('TMX Exported', `Saved to: ${outputPath}`);
     } catch (e: any) {
-      errorMessage = `Export failed: ${e}`;
+      toast.error('Export Failed', String(e));
     } finally {
       exporting = false;
     }
@@ -145,8 +140,6 @@
   async function handleImportToTm() {
     if (!selectedTmId || pairs.length === 0) return;
     importing = true;
-    errorMessage = '';
-    statusMessage = '';
     try {
       const count = await importAlignmentToTm({
         tm_id: selectedTmId,
@@ -154,9 +147,9 @@
         src_lang: srcLang,
         tgt_lang: tgtLang,
       });
-      statusMessage = `Imported ${count} translation units into TM.`;
+      toast.success('Imported to TM', `${count} translation units added.`);
     } catch (e: any) {
-      errorMessage = `Import failed: ${e}`;
+      toast.error('Import Failed', String(e));
     } finally {
       importing = false;
     }
@@ -199,7 +192,7 @@
       </div>
 
       <button
-        on:click={loadSampleData}
+        onclick={loadSampleData}
         class="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg transition-colors"
       >
         📄 Load Sample
@@ -207,19 +200,6 @@
     </div>
   </header>
 
-  <!-- Alerts -->
-  {#if statusMessage}
-    <div class="px-6 py-2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-xs border-b border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
-      <span>✓ {statusMessage}</span>
-      <button on:click={() => (statusMessage = '')} class="text-emerald-500 hover:text-emerald-700">✕</button>
-    </div>
-  {/if}
-  {#if errorMessage}
-    <div class="px-6 py-2 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 text-xs border-b border-red-200 dark:border-red-800 flex items-center justify-between">
-      <span>✕ {errorMessage}</span>
-      <button on:click={() => (errorMessage = '')} class="text-red-500 hover:text-red-700">✕</button>
-    </div>
-  {/if}
 
   <!-- Main View -->
   <div class="flex-1 flex flex-col overflow-hidden p-6 space-y-4">
@@ -229,7 +209,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <button
-              on:click={() => (mode = 'text')}
+              onclick={() => (mode = 'text')}
               class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
                      {mode === 'text'
                        ? 'bg-brand-500 text-white shadow-xs'
@@ -238,7 +218,7 @@
               📝 Paste Text
             </button>
             <button
-              on:click={() => (mode = 'file')}
+              onclick={() => (mode = 'file')}
               class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
                      {mode === 'file'
                        ? 'bg-brand-500 text-white shadow-xs'
@@ -249,7 +229,7 @@
           </div>
 
           <button
-            on:click={handleRunAlignment}
+            onclick={handleRunAlignment}
             disabled={aligning}
             class="px-5 py-2 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
           >
@@ -260,10 +240,11 @@
         {#if mode === 'text'}
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              <label for="align-src-text" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Source Document ({srcLang.toUpperCase()})
               </label>
               <textarea
+                id="align-src-text"
                 bind:value={sourceText}
                 placeholder="Paste source text or contract paragraphs here..."
                 rows="14"
@@ -272,10 +253,11 @@
               ></textarea>
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              <label for="align-tgt-text" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Target Translation ({tgtLang.toUpperCase()})
               </label>
               <textarea
+                id="align-tgt-text"
                 bind:value={targetText}
                 placeholder="Paste target translation paragraphs here..."
                 rows="14"
@@ -287,10 +269,11 @@
         {:else}
           <div class="space-y-4 py-4">
             <div>
-              <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              <label for="align-src-path" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Source File Path (.docx, .txt, .html, .md, .srt)
               </label>
               <input
+                id="align-src-path"
                 type="text"
                 bind:value={sourcePath}
                 placeholder="e.g. C:/Documents/Contract_EN.docx"
@@ -298,10 +281,11 @@
               />
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              <label for="align-tgt-path" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Target File Path (.docx, .txt, .html, .md, .srt)
               </label>
               <input
+                id="align-tgt-path"
                 type="text"
                 bind:value={targetPath}
                 placeholder="e.g. C:/Documents/Contract_AR.docx"
@@ -316,13 +300,13 @@
       <div class="flex items-center justify-between pb-2 shrink-0">
         <div class="flex items-center gap-2">
           <button
-            on:click={() => (pairs = [])}
+            onclick={() => (pairs = [])}
             class="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
           >
             ← New Alignment
           </button>
           <button
-            on:click={handleConfirmAll}
+            onclick={handleConfirmAll}
             class="px-2.5 py-1 text-xs border border-emerald-300 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 rounded-lg"
           >
             ✓ Confirm All
@@ -345,7 +329,7 @@
             </select>
 
             <button
-              on:click={handleImportToTm}
+              onclick={handleImportToTm}
               disabled={importing}
               class="px-3 py-1 text-xs font-medium text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg shadow-xs"
             >
@@ -355,7 +339,7 @@
 
           <!-- TMX Export -->
           <button
-            on:click={handleExportTmx}
+            onclick={handleExportTmx}
             disabled={exporting}
             class="px-3 py-1 text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg"
           >
@@ -382,7 +366,7 @@
                 <!-- Checkbox / Row # -->
                 <td class="py-2.5 px-3 text-center align-top">
                   <button
-                    on:click={() => handleToggleConfirm(i)}
+                    onclick={() => handleToggleConfirm(i)}
                     class="w-5 h-5 rounded border flex items-center justify-center text-[10px] font-bold transition-colors
                            {pair.confirmed
                              ? 'bg-emerald-500 border-emerald-500 text-white'
@@ -433,7 +417,7 @@
                 <td class="py-2.5 px-2 align-top text-center space-x-1">
                   {#if i < pairs.length - 1}
                     <button
-                      on:click={() => handleMergeDown(i)}
+                      onclick={() => handleMergeDown(i)}
                       class="text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 p-1"
                       title="Merge with sentence below (⤹)"
                     >
@@ -441,7 +425,7 @@
                     </button>
                   {/if}
                   <button
-                    on:click={() => handleDeletePair(i)}
+                    onclick={() => handleDeletePair(i)}
                     class="text-gray-400 hover:text-red-500 p-1"
                     title="Delete alignment pair"
                   >

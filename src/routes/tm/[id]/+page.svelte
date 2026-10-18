@@ -14,6 +14,7 @@
     getTmTusPaginated, updateTmTu, deleteTmTu, batchReplaceTm,
     listTms, type TranslationUnit, type TmInfo
   } from '$lib/ipc/tm';
+  import { toast } from '$lib/stores/toast';
 
   const tmId: string = $page.params.id || '';
 
@@ -105,20 +106,20 @@
       });
       edit.dirty = false;
     } catch (e: any) {
-      alert(`Save failed: ${e}`);
+      toast.error('Save Failed', String(e));
     } finally {
       savingId = null;
     }
   }
 
   async function handleDeleteTu(tuId: number) {
-    if (!confirm(`Delete TU #${tuId}? This cannot be undone.`)) return;
     try {
       await deleteTmTu({ tm_id: tmId, tu_id: tuId });
       await loadTus();
       await loadTmHeader();
+      toast.success('Unit Deleted', `TU #${tuId} removed.`);
     } catch (e: any) {
-      alert(`Delete failed: ${e}`);
+      toast.error('Delete Failed', String(e));
     }
   }
 
@@ -132,13 +133,13 @@
         replace_text: replaceText,
         target_only: targetOnly,
       });
-      alert(`Batch Replace Complete!\nUpdated ${affected} translation units.`);
+      toast.success('Batch Replace Complete', `Updated ${affected} translation units.`);
       showBatchReplaceModal = false;
       findText = '';
       replaceText = '';
       await loadTus();
     } catch (e: any) {
-      alert(`Batch replace failed: ${e}`);
+      toast.error('Batch Replace Failed', String(e));
     } finally {
       batchReplacing = false;
     }
@@ -152,7 +153,7 @@
   <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between shrink-0">
     <div class="flex items-center gap-3">
       <button
-        on:click={() => goto('/tm')}
+        onclick={() => goto('/tm')}
         class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
       >
         <span>←</span>
@@ -180,14 +181,14 @@
     <!-- Actions -->
     <div class="flex items-center gap-2">
       <button
-        on:click={() => (showBatchReplaceModal = true)}
+        onclick={() => (showBatchReplaceModal = true)}
         class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 shadow-2xs"
       >
         <span>🔍 Batch Replace</span>
       </button>
 
       <button
-        on:click={loadTus}
+        onclick={loadTus}
         class="px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-medium shadow-xs transition-colors"
       >
         ↻ Refresh
@@ -203,14 +204,14 @@
           type="text"
           placeholder="Search in source or target text…"
           bind:value={searchQuery}
-          on:input={handleSearchInput}
+          oninput={handleSearchInput}
           class="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500"
         />
         <span class="absolute left-2.5 top-2 text-gray-400">🔍</span>
       </div>
       {#if searchQuery}
         <button
-          on:click={() => { searchQuery = ''; handleSearchInput(); }}
+          onclick={() => { searchQuery = ''; handleSearchInput(); }}
           class="text-xs text-gray-400 hover:text-gray-600"
         >
           Clear
@@ -226,7 +227,7 @@
       <div class="flex items-center gap-1">
         <button
           disabled={pageIndex === 0}
-          on:click={() => { pageIndex--; loadTus(); }}
+          onclick={() => { pageIndex--; loadTus(); }}
           class="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
         >
           ◀
@@ -236,7 +237,7 @@
         </span>
         <button
           disabled={pageIndex >= totalPages - 1}
-          on:click={() => { pageIndex++; loadTus(); }}
+          onclick={() => { pageIndex++; loadTus(); }}
           class="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
         >
           ▶
@@ -288,7 +289,7 @@
                 <button
                   type="button"
                   disabled={!edit || !edit.dirty || savingId === tu.id}
-                  on:click={() => tu.id && handleSaveTu(tu.id)}
+                  onclick={() => tu.id && handleSaveTu(tu.id)}
                   class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1"
                 >
                   {#if savingId === tu.id}
@@ -298,7 +299,7 @@
                 </button>
                 <button
                   type="button"
-                  on:click={() => tu.id && handleDeleteTu(tu.id)}
+                  onclick={() => tu.id && handleDeleteTu(tu.id)}
                   class="px-2.5 py-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs transition-colors"
                 >
                   Delete
@@ -316,7 +317,7 @@
                 <textarea
                   rows="2"
                   value={edit?.source ?? tu.source_text}
-                  on:input={(e) => tu.id && handleTextChange(tu.id, 'source', e.currentTarget.value)}
+                  oninput={(e) => tu.id && handleTextChange(tu.id, 'source', e.currentTarget.value)}
                   class="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 font-editor leading-relaxed text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 ></textarea>
               </div>
@@ -329,7 +330,7 @@
                 <textarea
                   rows="2"
                   value={edit?.target ?? tu.target_text}
-                  on:input={(e) => tu.id && handleTextChange(tu.id, 'target', e.currentTarget.value)}
+                  oninput={(e) => tu.id && handleTextChange(tu.id, 'target', e.currentTarget.value)}
                   class="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 font-editor leading-relaxed text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 ></textarea>
               </div>
@@ -354,10 +355,11 @@
 
       <div class="space-y-3 mb-5 text-xs">
         <div>
-          <label class="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label for="find-text" class="block font-medium text-gray-700 dark:text-gray-300 mb-1">
             Find Text:
           </label>
           <input
+            id="find-text"
             type="text"
             bind:value={findText}
             placeholder="e.g. Acme Corp"
@@ -366,10 +368,11 @@
         </div>
 
         <div>
-          <label class="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label for="replace-text" class="block font-medium text-gray-700 dark:text-gray-300 mb-1">
             Replace With:
           </label>
           <input
+            id="replace-text"
             type="text"
             bind:value={replaceText}
             placeholder="e.g. Acme Global Inc."
@@ -392,7 +395,7 @@
       <div class="flex items-center justify-end gap-2">
         <button
           type="button"
-          on:click={() => (showBatchReplaceModal = false)}
+          onclick={() => (showBatchReplaceModal = false)}
           class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           Cancel
@@ -400,7 +403,7 @@
         <button
           type="button"
           disabled={!findText.trim() || batchReplacing}
-          on:click={handleExecuteBatchReplace}
+          onclick={handleExecuteBatchReplace}
           class="px-4 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
         >
           {#if batchReplacing}

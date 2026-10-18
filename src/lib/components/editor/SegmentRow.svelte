@@ -594,13 +594,15 @@
 {#if $settings.layoutMode === 'stacked'}
   <!-- Stacked Layout: Source block over Target block -->
   <div
-    class="grid grid-cols-[3.25rem_1fr] min-h-[4.5rem] border-b border-gray-100 dark:border-gray-800/80
+    class="grid grid-cols-[3px_3.25rem_1fr] min-h-[4.5rem] border-b border-gray-100 dark:border-gray-800/80
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
-    on:click={onSelect}
+    onclick={onSelect}
     role="row"
     tabindex="-1"
     aria-selected={isSelected}
   >
+    <!-- Status edge bar -->
+    <div class="self-stretch rounded-l {segment.status === 'translated' ? 'bg-emerald-500' : segment.status === 'draft' ? 'bg-amber-400' : segment.status === 'needs_review' ? 'bg-blue-400' : 'bg-gray-200 dark:bg-gray-700'}"></div>
     <!-- Left: Seq # and status -->
     <div class="flex flex-col items-center justify-between py-2 px-1 border-r border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20 select-none">
       <div class="flex flex-col items-center gap-1">
@@ -621,7 +623,7 @@
         <!-- Lock Toggle Button -->
         <button
           type="button"
-          on:click|stopPropagation={() => onToggleLock(segment.id)}
+          onclick={() => onToggleLock(segment.id)}
           class="text-[11px] leading-none transition-transform hover:scale-125 {segment.locked ? 'text-rose-500 font-bold' : 'text-gray-300 dark:text-gray-700 hover:text-rose-400'}"
           title={segment.locked ? 'Locked (Ctrl+L to unlock)' : 'Lock segment (Ctrl+L)'}
         >
@@ -629,7 +631,7 @@
         </button>
         <!-- Bookmark Button -->
         <button
-          on:click|stopPropagation={() => onToggleBookmark(segment.id)}
+          onclick={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
           title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
         >★</button>
@@ -663,7 +665,7 @@
             {#if isSelected && !isSourceEditing}
               <button
                 type="button"
-                on:click|stopPropagation={handleToggleSourceEditing}
+                onclick={handleToggleSourceEditing}
                 class="text-[10px] px-1 py-0.2 rounded bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
                 title="Edit Source Text (Alt+F2)"
               >
@@ -682,12 +684,12 @@
               <div class="flex items-center gap-1.5">
                 <button
                   type="button"
-                  on:click|stopPropagation={handleSaveSource}
+                  onclick={handleSaveSource}
                   class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] hover:bg-emerald-700 cursor-pointer"
                 >Save (Enter)</button>
                 <button
                   type="button"
-                  on:click|stopPropagation={handleCancelSource}
+                  onclick={handleCancelSource}
                   class="px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] cursor-pointer"
                 >Cancel (Esc)</button>
               </div>
@@ -695,7 +697,7 @@
             <div
               bind:this={sourceEditEl}
               contenteditable="true"
-              on:keydown={handleSourceKeydown}
+              onkeydown={handleSourceKeydown}
               class="outline-none bg-white dark:bg-gray-800 p-2 rounded text-gray-900 dark:text-white leading-relaxed font-editor text-sm ring-1 ring-amber-400"
               dir="auto"
             >{segment.source_text}</div>
@@ -715,7 +717,7 @@
               <span>⚠️ {missingTags.length} missing tag{missingTags.length > 1 ? 's' : ''}</span>
               <button
                 type="button"
-                on:click|stopPropagation={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
+                onclick={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
                 class="hover:underline font-bold text-brand-600 dark:text-brand-400 cursor-pointer ml-1"
               >
                 QuickPlace (Ctrl+,)
@@ -730,7 +732,7 @@
             <span class="flex items-center gap-1 font-medium"><span>🔒</span> <span>Segment is locked</span></span>
             <button
               type="button"
-              on:click|stopPropagation={() => onToggleLock(segment.id)}
+              onclick={() => onToggleLock(segment.id)}
               class="hover:underline font-semibold cursor-pointer text-[11px]"
             >
               Unlock (Ctrl+L)
@@ -749,12 +751,12 @@
             </div>
             <div class="flex items-center gap-1 shrink-0 ml-2">
               <button
-                on:click|stopPropagation={handleAcceptRevision}
+                onclick={handleAcceptRevision}
                 class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
                 title="Accept Revision (Ctrl+Shift+A)"
               >Accept</button>
               <button
-                on:click|stopPropagation={handleRejectRevision}
+                onclick={handleRejectRevision}
                 class="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
                 title="Reject Revision (Ctrl+Shift+R)"
               >Reject</button>
@@ -771,7 +773,7 @@
             </div>
             <button
               type="button"
-              on:mousedown|preventDefault={() => onApplyAutoPatch(autoPatchSuggestion)}
+              onmousedown={(e) => { e.preventDefault(); onApplyAutoPatch(autoPatchSuggestion); }}
               class="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-medium text-[11px] shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
             >
               <span>Apply</span>
@@ -804,11 +806,11 @@
           bind:this={targetEl}
           contenteditable={!segment.locked}
           tabindex="0"
-          on:input={handleInput}
-          on:keydown={handleKeydown}
-          on:focus={onSelect}
-          on:mouseup={handleSelectionCheck}
-          on:keyup={handleSelectionCheck}
+          oninput={handleInput}
+          onkeydown={handleKeydown}
+          onfocus={onSelect}
+          onmouseup={handleSelectionCheck}
+          onkeyup={handleSelectionCheck}
           class="outline-none flex-1 min-h-[2.5rem] leading-relaxed
                  text-gray-900 dark:text-white caret-brand-500 font-editor
                  {segment.locked ? 'bg-gray-50/60 dark:bg-gray-900/40 text-gray-400 cursor-not-allowed select-none' : ''}
@@ -829,12 +831,14 @@
   <div
     class="grid min-h-[3rem] border-b border-gray-100 dark:border-gray-800/80
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
-    style="grid-template-columns: 3.25rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
-    on:click={onSelect}
+    style="grid-template-columns: 3px 3.25rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
+    onclick={onSelect}
     role="row"
     tabindex="-1"
     aria-selected={isSelected}
   >
+    <!-- Status edge bar -->
+    <div class="self-stretch rounded-l {segment.status === 'translated' ? 'bg-emerald-500' : segment.status === 'draft' ? 'bg-amber-400' : segment.status === 'needs_review' ? 'bg-blue-400' : 'bg-gray-200 dark:bg-gray-700'}"></div>
     <!-- Left: Seq #, status, DSI, and lock -->
     <div class="flex flex-col items-center justify-between py-2 px-1 shrink-0 select-none border-r border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20">
       <div class="flex flex-col items-center gap-1">
@@ -855,7 +859,7 @@
         <!-- Lock Toggle Button -->
         <button
           type="button"
-          on:click|stopPropagation={() => onToggleLock(segment.id)}
+          onclick={() => onToggleLock(segment.id)}
           class="text-[11px] leading-none transition-transform hover:scale-125 {segment.locked ? 'text-rose-500 font-bold' : 'text-gray-300 dark:text-gray-700 hover:text-rose-400'}"
           title={segment.locked ? 'Locked (Ctrl+L to unlock)' : 'Lock segment (Ctrl+L)'}
         >
@@ -863,7 +867,7 @@
         </button>
         <!-- Bookmark Button -->
         <button
-          on:click|stopPropagation={() => onToggleBookmark(segment.id)}
+          onclick={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
           title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
         >★</button>
@@ -900,12 +904,12 @@
               <div class="flex items-center gap-1">
                 <button
                   type="button"
-                  on:click|stopPropagation={handleSaveSource}
+                  onclick={handleSaveSource}
                   class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] hover:bg-emerald-700 cursor-pointer"
                 >Save (Enter)</button>
                 <button
                   type="button"
-                  on:click|stopPropagation={handleCancelSource}
+                  onclick={handleCancelSource}
                   class="px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-[10px] cursor-pointer"
                 >Cancel (Esc)</button>
               </div>
@@ -913,7 +917,7 @@
             <div
               bind:this={sourceEditEl}
               contenteditable="true"
-              on:keydown={handleSourceKeydown}
+              onkeydown={handleSourceKeydown}
               class="outline-none bg-white dark:bg-gray-800 p-2 rounded text-gray-900 dark:text-white leading-relaxed font-editor text-sm ring-1 ring-amber-400"
               dir="auto"
             >{segment.source_text}</div>
@@ -928,7 +932,7 @@
         <div class="mt-1 pt-1 border-t border-gray-100 dark:border-gray-800/60 flex items-center justify-between text-[10px] text-gray-400 select-none">
           <button
             type="button"
-            on:click|stopPropagation={handleToggleSourceEditing}
+            onclick={handleToggleSourceEditing}
             class="hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center gap-1 cursor-pointer font-medium"
             title="Edit Source Text (Alt+F2)"
           >
@@ -951,7 +955,7 @@
           <span class="flex items-center gap-1 font-medium"><span>🔒</span> <span>Segment is locked</span></span>
           <button
             type="button"
-            on:click|stopPropagation={() => onToggleLock(segment.id)}
+            onclick={() => onToggleLock(segment.id)}
             class="hover:underline font-semibold cursor-pointer text-[11px]"
           >
             Unlock (Ctrl+L)
@@ -970,12 +974,12 @@
           </div>
           <div class="flex items-center gap-1 shrink-0 ml-2">
             <button
-              on:click|stopPropagation={handleAcceptRevision}
+              onclick={handleAcceptRevision}
               class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
               title="Accept Revision (Ctrl+Shift+A)"
             >Accept</button>
             <button
-              on:click|stopPropagation={handleRejectRevision}
+              onclick={handleRejectRevision}
               class="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
               title="Reject Revision (Ctrl+Shift+R)"
             >Reject</button>
@@ -990,7 +994,7 @@
           <div class="flex items-center gap-2">
             <button
               type="button"
-              on:click|stopPropagation={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
+              onclick={() => { quickPlaceVisible = !quickPlaceVisible; activeQuickPlaceIndex = 0; }}
               class="hover:underline font-bold text-brand-600 dark:text-brand-400 cursor-pointer"
             >
               QuickPlace (Ctrl+,)
@@ -998,7 +1002,7 @@
             <span>•</span>
             <button
               type="button"
-              on:click|stopPropagation={handleInsertAllMissingTags}
+              onclick={handleInsertAllMissingTags}
               class="hover:underline text-gray-600 dark:text-gray-400 cursor-pointer"
             >
               + All
@@ -1016,7 +1020,7 @@
           </div>
           <button
             type="button"
-            on:mousedown|preventDefault={() => onApplyAutoPatch(autoPatchSuggestion)}
+            onmousedown={(e) => { e.preventDefault(); onApplyAutoPatch(autoPatchSuggestion); }}
             class="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-medium text-[11px] shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
           >
             <span>Apply</span>
@@ -1049,11 +1053,11 @@
         bind:this={targetEl}
         contenteditable={!segment.locked}
         tabindex="0"
-        on:input={handleInput}
-        on:keydown={handleKeydown}
-        on:focus={onSelect}
-        on:mouseup={handleSelectionCheck}
-        on:keyup={handleSelectionCheck}
+        oninput={handleInput}
+        onkeydown={handleKeydown}
+        onfocus={onSelect}
+        onmouseup={handleSelectionCheck}
+        onkeyup={handleSelectionCheck}
         class="py-2.5 px-3.5 text-sm editor-text outline-none flex-1 min-h-[3rem] leading-relaxed
                text-gray-900 dark:text-white caret-brand-500 font-editor
                {segment.locked ? 'bg-gray-50/60 dark:bg-gray-900/40 text-gray-400 cursor-not-allowed select-none' : ''}
@@ -1073,31 +1077,31 @@
           <span class="text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">✨ AI:</span>
           <button
             type="button"
-            on:click|stopPropagation={() => handleTriggerAiAction('rephrase')}
+            onclick={() => handleTriggerAiAction('rephrase')}
             class="px-1.5 py-0.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/50 text-gray-700 dark:text-gray-300"
             title="Rephrase & Polish selected text"
           >Polish</button>
           <button
             type="button"
-            on:click|stopPropagation={() => handleTriggerAiAction('condense')}
+            onclick={() => handleTriggerAiAction('condense')}
             class="px-1.5 py-0.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/50 text-gray-700 dark:text-gray-300"
             title="Shorten / Condense selected text"
           >Condense</button>
           <button
             type="button"
-            on:click|stopPropagation={() => handleTriggerAiAction('tone_formal')}
+            onclick={() => handleTriggerAiAction('tone_formal')}
             class="px-1.5 py-0.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/50 text-gray-700 dark:text-gray-300"
             title="Make formal"
           >Formal</button>
           <button
             type="button"
-            on:click|stopPropagation={() => handleTriggerAiAction('tone_casual')}
+            onclick={() => handleTriggerAiAction('tone_casual')}
             class="px-1.5 py-0.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/50 text-gray-700 dark:text-gray-300"
             title="Make casual"
           >Casual</button>
           <button
             type="button"
-            on:click|stopPropagation={() => handleTriggerAiAction('fix_grammar')}
+            onclick={() => handleTriggerAiAction('fix_grammar')}
             class="px-1.5 py-0.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/50 text-gray-700 dark:text-gray-300"
             title="Check and fix grammar"
           >Grammar</button>
@@ -1108,26 +1112,26 @@
       <div class="absolute top-1.5 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 dark:bg-gray-900/95 backdrop-blur-xs px-1 py-0.5 rounded-md border border-gray-200 dark:border-gray-700/80 shadow-xs z-10 {isSelected ? 'opacity-90' : ''}">
         <button
           type="button"
-          on:click|stopPropagation={handleCopySource}
+          onclick={handleCopySource}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Copy Source (Alt+Ins)"
         >📋</button>
         <button
           type="button"
-          on:click|stopPropagation={handleClearTarget}
+          onclick={handleClearTarget}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Clear Target"
         >🧹</button>
         <button
           type="button"
-          on:click|stopPropagation={() => onSplit(segment.id)}
+          onclick={() => onSplit(segment.id)}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Split Segment (Ctrl+Alt+S)"
         >✂</button>
         {#if canMergeNext}
           <button
             type="button"
-            on:click|stopPropagation={() => onMergeNext(segment.id)}
+            onclick={() => onMergeNext(segment.id)}
             class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             title="Merge Next (Ctrl+J)"
           >⤹</button>
@@ -1135,7 +1139,7 @@
         {#if canMergePrev}
           <button
             type="button"
-            on:click|stopPropagation={() => onMergePrev(segment.id)}
+            onclick={() => onMergePrev(segment.id)}
             class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             title="Merge Prev (Ctrl+Shift+J)"
           >⤸</button>

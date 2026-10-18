@@ -20,6 +20,14 @@ export interface UserSettings {
   targetOpticalBoost: boolean;  // +2px font size for target non-Latin scripts
   spellcheckEnabled: boolean;   // offline spellchecking & linter
   revisionMode: boolean;        // track changes redline revision mode
+  // QA settings
+  autoRunQa: boolean;
+  qaCheckNumbers: boolean;
+  qaCheckPunctuation: boolean;
+  qaCheckDoubleSpaces: boolean;
+  qaCheckTags: boolean;
+  // Translation workflow
+  autoPropagate: boolean;       // auto-propagate confirmed segments to identical source
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -38,6 +46,12 @@ const DEFAULT_SETTINGS: UserSettings = {
   targetOpticalBoost: false,
   spellcheckEnabled: true,
   revisionMode: false,
+  autoRunQa: false,
+  qaCheckNumbers: true,
+  qaCheckPunctuation: true,
+  qaCheckDoubleSpaces: true,
+  qaCheckTags: true,
+  autoPropagate: true,
 };
 
 function createSettingsStore() {

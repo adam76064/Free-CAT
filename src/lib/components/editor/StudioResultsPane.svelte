@@ -272,6 +272,9 @@
     <!-- Bottom Draggable Resizer Handle -->
     <div
       class="h-1.5 bg-gray-200 dark:bg-gray-800 hover:bg-brand-500 cursor-row-resize transition-colors flex items-center justify-center opacity-70 hover:opacity-100 z-10"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize results pane"
       on:pointerdown={handleStartResize}
       title="Drag to adjust Translation Results pane height"
     >

@@ -1082,6 +1082,9 @@
             <!-- Draggable Splitter Handle -->
             <div
               class="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-20 flex items-center justify-center opacity-60 hover:opacity-100"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize source and target columns"
               on:pointerdown={handleStartSourceResize}
               title="Drag to adjust Source/Target ratio"
             >
@@ -1150,6 +1153,9 @@
         <!-- Left Draggable Splitter Handle -->
         <div
           class="absolute -left-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand-500/50 transition-colors z-30 flex items-center justify-center opacity-60 hover:opacity-100"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize inspector drawer"
           on:pointerdown={handleStartInspectorResize}
           title="Drag to resize Drawer"
         >

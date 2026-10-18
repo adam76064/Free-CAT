@@ -152,7 +152,10 @@
                      {i === selectedIdx
                        ? 'bg-brand-50/70 dark:bg-brand-950/40 border-brand-300 dark:border-brand-800 ring-1 ring-brand-400 shadow-xs'
                        : 'bg-white dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'}"
+              role="button"
+              tabindex="0"
               on:click={() => selectedIdx = i}
+              on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedIdx = i; } }}
             >
               <div class="flex items-start justify-between gap-3 mb-2">
                 <div class="flex items-center gap-1.5">

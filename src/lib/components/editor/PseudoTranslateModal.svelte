@@ -78,7 +78,8 @@
   <!-- Backdrop -->
   <div
     class="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
-    on:click|self={handleClose}
+    role="presentation"
+    onclick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
   >
     <!-- Modal Card -->
     <div
@@ -99,7 +100,7 @@
         </div>
         <button
           type="button"
-          on:click={handleClose}
+          onclick={handleClose}
           class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm p-1 rounded-md"
         >
           ✕
@@ -191,7 +192,7 @@
       <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-850 flex items-center justify-between">
         <button
           type="button"
-          on:click={handleClose}
+          onclick={handleClose}
           class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           Close
@@ -199,7 +200,7 @@
 
         <button
           type="button"
-          on:click={handleRun}
+          onclick={handleRun}
           disabled={isRunning}
           class="px-4 py-1.5 text-xs font-bold rounded-lg bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1.5"
         >

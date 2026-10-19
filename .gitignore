@@ -5,6 +5,8 @@ target/
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
 .env
 .env.*
 !.env.example
@@ -12,3 +14,8 @@ src-tauri/target/
 src-tauri/WixTools/
 *.pem
 *.key
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

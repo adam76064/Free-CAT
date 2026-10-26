@@ -16,7 +16,7 @@ pub async fn query_tb(
     tb_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<TermEntry>, String> {
-    let index = state.tb_index.lock().unwrap().clone();
+    let index = state.tb_index.lock().clone();
     let mut all: Vec<TermEntry> = Vec::new();
 
     for entry in index.iter().filter(|e| tb_ids.contains(&e.id)) {
@@ -53,7 +53,7 @@ pub async fn add_term(
     args: AddTermArgs,
     state: State<'_, AppState>,
 ) -> Result<i64, String> {
-    let entry = state.tb_index.lock().unwrap()
+    let entry = state.tb_index.lock()
         .iter().find(|e| e.id == args.tb_id).cloned()
         .ok_or_else(|| format!("TB {} not found", args.tb_id))?;
 
@@ -83,7 +83,7 @@ pub async fn import_tbx(
     tbx_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    let entry = state.tb_index.lock().unwrap()
+    let entry = state.tb_index.lock()
         .iter().find(|e| e.id == tb_id).cloned()
         .ok_or_else(|| format!("TB {} not found", tb_id))?;
 
@@ -111,7 +111,7 @@ pub async fn export_tbx(
     out_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    let entry = state.tb_index.lock().unwrap()
+    let entry = state.tb_index.lock()
         .iter().find(|e| e.id == tb_id).cloned()
         .ok_or_else(|| format!("TB {} not found", tb_id))?;
 
@@ -131,7 +131,7 @@ pub async fn export_tbx(
 pub async fn list_tbs(
     state: State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let index = state.tb_index.lock().unwrap().clone();
+    let index = state.tb_index.lock().clone();
     let mut infos = Vec::new();
     for entry in index {
         if let Ok(tb) = TbDb::open(entry.id.clone(), entry.name.clone(), entry.path) {
@@ -169,7 +169,7 @@ pub async fn create_tb(
         path,
     };
 
-    state.tb_index.lock().unwrap().push(entry);
+    state.tb_index.lock().push(entry);
     state.save_tb_index().map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({ "id": id, "name": args.name, "count": 0 }))
@@ -182,7 +182,7 @@ pub async fn delete_tb(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let path = {
-        let mut index = state.tb_index.lock().unwrap();
+        let mut index = state.tb_index.lock();
         let pos = index.iter().position(|e| e.id == tb_id)
             .ok_or_else(|| format!("TB {} not found", tb_id))?;
         index.remove(pos).path
@@ -213,7 +213,7 @@ pub async fn get_terms(
     tb_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TermEntry>, String> {
-    let entry = state.tb_index.lock().unwrap()
+    let entry = state.tb_index.lock()
         .iter().find(|e| e.id == tb_id).cloned()
         .ok_or_else(|| format!("TB {} not found", tb_id))?;
 
@@ -230,7 +230,7 @@ pub async fn delete_term(
     term_id: i64,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let entry = state.tb_index.lock().unwrap()
+    let entry = state.tb_index.lock()
         .iter().find(|e| e.id == tb_id).cloned()
         .ok_or_else(|| format!("TB {} not found", tb_id))?;
 

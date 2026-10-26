@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { highlightDiff } from '$lib/utils/html';
   // TmPanel — shows TM matches, MT suggestions, and concordance search.
   import { tmMatches, tmLoading, concordanceResults, concordanceQuery } from '$lib/stores/tm';
   import { selectedSegment } from '$lib/stores/segments';
@@ -69,12 +70,6 @@
     lastFetchedSource = $selectedSegment.source_text;
 
     try {
-      const apiKey = mtEngine === 'deepl'
-        ? $settings.deepl_api_key
-        : mtEngine === 'google'
-        ? $settings.google_translate_key
-        : undefined;
-
       const apiUrl = mtEngine === 'libretranslate'
         ? $settings.libretranslate_url
         : undefined;
@@ -84,7 +79,6 @@
         src_lang: $currentProject.src_lang,
         tgt_lang: $currentProject.tgt_lang,
         engine: mtEngine,
-        api_key: apiKey,
         api_url: apiUrl,
       });
 
@@ -113,16 +107,6 @@
   }
 
   // Highlight diff between TM source and current source
-  function highlightDiff(tmSrc: string, curSrc: string): string {
-    if (tmSrc === curSrc) return tmSrc;
-    const tmWords = tmSrc.split(' ');
-    const curWords = curSrc.split(' ');
-    return tmWords.map(w =>
-      curWords.includes(w)
-        ? w
-        : `<mark class="bg-red-100 dark:bg-red-900/30 rounded px-0.5">${w}</mark>`
-    ).join(' ');
-  }
 </script>
 
 <div class="flex flex-col h-full">

@@ -75,7 +75,7 @@ pub async fn import_file(
         .collect();
 
     // Persist to DB
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.insert_file(&project_file).map_err(|e| e.to_string())?;
     for seg in &segments {
         db.insert_segment(seg).map_err(|e| e.to_string())?;
@@ -100,7 +100,7 @@ pub async fn export_file(
     out_path:   Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let files = db.get_files_for_project(&project_id).map_err(|e| e.to_string())?;
     let file = files.iter().find(|f| f.id == file_id)
         .ok_or_else(|| format!("File {} not found", file_id))?
@@ -178,7 +178,7 @@ pub async fn export_sdlrpx(
     out_path: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let files = db.get_files_for_project(&project_id)
         .map_err(|e| e.to_string())?;
 
@@ -223,7 +223,7 @@ pub async fn export_bilingual_review(
     out_path: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let files = db.get_files_for_project(&project_id).map_err(|e| e.to_string())?;
     let file = files.iter().find(|f| f.id == file_id)
         .ok_or_else(|| format!("File {} not found", file_id))?;
@@ -268,7 +268,7 @@ pub async fn import_bilingual_review(
         .map_err(|e| format!("Failed to parse bilingual review document: {}", e))?;
 
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let segments = db.get_segments_for_file(&file_id).map_err(|e| e.to_string())?;
 
     let mut updated_count = 0;

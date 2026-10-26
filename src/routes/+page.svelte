@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { goto } from '$app/navigation';
@@ -224,7 +225,7 @@
 
 <!-- New Project Modal -->
 {#if showNewModal}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div use:dialog={{ label: "New Project" }} class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-5">New Project</h2>
 

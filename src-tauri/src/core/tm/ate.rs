@@ -26,7 +26,7 @@ const STOPWORDS: &[&str] = &[
 ];
 
 pub fn extract_terms(text: &str, min_freq: usize, max_ngram: usize) -> Vec<ExtractedTerm> {
-    let sentences: Vec<&str> = text.split(|c: char| c == '.' || c == '\n' || c == '?' || c == '!')
+    let sentences: Vec<&str> = text.split(|c: char| matches!(c, '.' | '\n' | '?' | '!' | '\u{061F}' | '\u{061B}' | '\u{06D4}' | '\u{3002}' | '\u{FF1F}' | '\u{FF01}'))
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .collect();
@@ -106,5 +106,15 @@ mod tests {
         assert!(!terms.is_empty());
         assert_eq!(terms[0].term, "translation memory");
         assert_eq!(terms[0].frequency, 3);
+    }
+
+    #[test]
+    fn test_arabic_punctuation_splits_sentences() {
+        // Arabic question mark (؟) and semicolon (؛) must act as sentence
+        // boundaries so n-grams never span two sentences.
+        let corpus = "ما هي الذاكرة الترجمية؟ الذاكرة الترجمية تخزن المقاطع؛ الذاكرة الترجمية سريعة.";
+        let terms = extract_terms(corpus, 2, 3);
+        assert!(terms.iter().all(|t| !t.term.contains('؟') && !t.term.contains('؛')));
+        assert!(terms.iter().any(|t| t.term == "الذاكرة الترجمية" && t.frequency == 3));
     }
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ShowMore from '$lib/components/ui/ShowMore.svelte';
   // QaPanel — displays QA check results grouped by severity.
   import { qaResults, qaRunning, qaErrors, qaWarnings, QA_CHECK_LABELS } from '$lib/stores/qa';
 
@@ -7,6 +8,16 @@
     onRunQa: () => void;
   }
   let { onJumpToSegment, onRunQa }: Props = $props();
+
+  const QA_PAGE = 200;
+  let errorLimit = $state(QA_PAGE);
+  let warningLimit = $state(QA_PAGE);
+  // A fresh QA run replaces the results: start from the first page again
+  $effect(() => {
+    $qaResults;
+    errorLimit = QA_PAGE;
+    warningLimit = QA_PAGE;
+  });
 </script>
 
 <div class="flex flex-col h-full">
@@ -50,7 +61,7 @@
             Errors ({$qaErrors.length})
           </span>
         </div>
-        {#each $qaErrors as result}
+        {#each $qaErrors.slice(0, errorLimit) as result}
           <button
             onclick={() => result.segment_id && onJumpToSegment(result.segment_id)}
             class="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
@@ -66,6 +77,7 @@
             </div>
           </button>
         {/each}
+        <ShowMore shown={errorLimit} total={$qaErrors.length} step={QA_PAGE} onmore={() => (errorLimit += QA_PAGE)} />
       {/if}
 
       <!-- Warnings -->
@@ -75,7 +87,7 @@
             Warnings ({$qaWarnings.length})
           </span>
         </div>
-        {#each $qaWarnings as result}
+        {#each $qaWarnings.slice(0, warningLimit) as result}
           <button
             onclick={() => result.segment_id && onJumpToSegment(result.segment_id)}
             class="w-full text-left px-3 py-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/10 transition-colors"
@@ -91,6 +103,7 @@
             </div>
           </button>
         {/each}
+        <ShowMore shown={warningLimit} total={$qaWarnings.length} step={QA_PAGE} onmore={() => (warningLimit += QA_PAGE)} />
       {/if}
     {/if}
   </div>

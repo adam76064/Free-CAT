@@ -44,8 +44,8 @@ export default {
         }
       },
       fontFamily: {
-        editor: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
-        ui:     ['Inter', 'system-ui', 'sans-serif'],
+        editor: ['JetBrains Mono', 'Noto Sans Arabic', 'Fira Code', 'Consolas', 'monospace'],
+        ui:     ['Inter', 'Noto Sans Arabic', 'system-ui', 'sans-serif'],
       },
       spacing: {
         'segment-row': '2.5rem',

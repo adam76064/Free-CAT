@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { renderSource } from '$lib/utils/html';
+  import { extractTags, textStats, cycleCase, getStructureCode } from '$lib/utils/segmentText';
   /**
    * SegmentRow — Enterprise bilingual source|target row with:
    * - Interactive QuickTag HUD (Ctrl+,) & tag balance validation
@@ -21,6 +23,8 @@
 
   export let segment: Segment;
   export let isSelected: boolean;
+  /** 1-based position in the full list (rows are windowed, so assistive tech needs it). */
+  export let rowIndex: number | undefined = undefined;
   export let canMergePrev: boolean = false;
   export let canMergeNext: boolean = false;
   export let activeSuggestions: SuggestionItem[] = [];
@@ -78,11 +82,7 @@
     sel?.addRange(range);
   }
 
-  $: srcChars = (segment.source_text || '').length;
-  $: srcWords = (segment.source_text || '').trim().split(/\s+/).filter(Boolean).length;
-  $: tgtChars = (segment.target_text || '').length;
-  $: tgtWords = (segment.target_text || '').trim().split(/\s+/).filter(Boolean).length;
-  $: expansionRatio = srcChars > 0 && tgtChars > 0 ? Math.round(((tgtChars - srcChars) / srcChars) * 100) : 0;
+  $: ({ srcChars, srcWords, tgtChars, tgtWords, expansionRatio } = textStats(segment.source_text, segment.target_text));
 
   export function focusTarget() {
     targetEl?.focus();
@@ -164,13 +164,6 @@
     if (targetEl) targetEl.textContent = newText;
     suggestVisible = false;
     setTimeout(() => moveCursorToEnd(), 20);
-  }
-
-  // Extract tags: e.g. {1}, {2}, {/1}, etc.
-  function extractTags(text: string): string[] {
-    if (!text) return [];
-    const matches = text.match(/\{[^}]+\}/g);
-    return matches ? Array.from(new Set(matches)) : [];
   }
 
   $: sourceTags = extractTags(segment.source_text);
@@ -273,14 +266,7 @@
 
     const selectedText = sel.toString();
     if (selectedText.length > 0) {
-      let nextText = '';
-      if (selectedText === selectedText.toLowerCase()) {
-        nextText = selectedText.toUpperCase();
-      } else if (selectedText === selectedText.toUpperCase()) {
-        nextText = selectedText.replace(/\b\w/g, c => c.toUpperCase());
-      } else {
-        nextText = selectedText.toLowerCase();
-      }
+      const nextText = cycleCase(selectedText);
       const range = sel.getRangeAt(0);
       range.deleteContents();
       const node = document.createTextNode(nextText);
@@ -294,14 +280,7 @@
       const full = targetEl.textContent || '';
       const currentWord = getCurrentWordAtCaret();
       if (currentWord) {
-        let nextWord = '';
-        if (currentWord === currentWord.toLowerCase()) {
-          nextWord = currentWord.toUpperCase();
-        } else if (currentWord === currentWord.toUpperCase()) {
-          nextWord = currentWord.charAt(0).toUpperCase() + currentWord.slice(1).toLowerCase();
-        } else {
-          nextWord = currentWord.toLowerCase();
-        }
+        const nextWord = cycleCase(currentWord);
         const lastIdx = full.lastIndexOf(currentWord);
         if (lastIdx !== -1) {
           const replaced = full.slice(0, lastIdx) + nextWord + full.slice(lastIdx + currentWord.length);
@@ -535,45 +514,9 @@
     }
   }
 
-  function getStructureCode(text: string): { code: string; label: string; color: string } {
-    const t = text.trim();
-    if (t.startsWith('# ') || t.startsWith('<h1>')) {
-      return { code: 'H1', label: 'Heading 1', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
-    }
-    if (t.startsWith('## ') || t.startsWith('<h2>')) {
-      return { code: 'H2', label: 'Heading 2', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
-    }
-    if (t.startsWith('### ') || t.startsWith('<h3>')) {
-      return { code: 'H3', label: 'Heading 3', color: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800' };
-    }
-    if (t.startsWith('- ') || t.startsWith('* ') || /^\d+\.\s/.test(t) || t.startsWith('<li>')) {
-      return { code: 'LI', label: 'List Item', color: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800' };
-    }
-    if (t.includes('|') || t.startsWith('<td>') || t.startsWith('<th>')) {
-      return { code: 'TC', label: 'Table Cell', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800' };
-    }
-    if (t.toLowerCase().includes('footnote') || /\[\^\d+\]/.test(t)) {
-      return { code: 'FN', label: 'Footnote', color: 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800' };
-    }
-    return { code: 'P', label: 'Paragraph', color: 'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700' };
-  }
-
   $: structure = getStructureCode(segment.source_text);
 
   /** Render source text with stylish non-breakable tag pills & live QuickPlace spotlight */
-  function renderSource(text: string, highlightToken: string | null): string {
-    let html = text.replace(
-      /\{([^}]+)\}/g,
-      '<span class="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/80 px-1.5 py-0.2 rounded select-none mx-0.5 tracking-tight cursor-default" title="Tag placeholder {$1}">🏷️$1</span>'
-    );
-    if (highlightToken && highlightToken.trim() && !highlightToken.startsWith('{')) {
-      const escaped = highlightToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`(${escaped})`, 'g');
-      html = html.replace(re, '<mark class="bg-cyan-200 dark:bg-cyan-900/90 text-cyan-950 dark:text-cyan-100 ring-2 ring-cyan-500 rounded px-1 animate-pulse font-bold">$1</mark>');
-    }
-    return html;
-  }
-
   $: rowBg = isSelected
     ? 'bg-brand-50/70 dark:bg-brand-900/20 ring-1 ring-inset ring-brand-300 dark:ring-brand-700'
     : 'hover:bg-gray-50 dark:hover:bg-gray-800/30';
@@ -598,6 +541,7 @@
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
     onclick={onSelect}
     role="row"
+    aria-rowindex={rowIndex}
     tabindex="-1"
     aria-selected={isSelected}
   >
@@ -630,7 +574,7 @@
           {segment.locked ? '🔒' : '🔓'}
         </button>
         <!-- Bookmark Button -->
-        <button
+        <button aria-label={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
           onclick={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
           title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
@@ -834,6 +778,7 @@
     style="grid-template-columns: 3px 3.25rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
     onclick={onSelect}
     role="row"
+    aria-rowindex={rowIndex}
     tabindex="-1"
     aria-selected={isSelected}
   >
@@ -866,7 +811,7 @@
           {segment.locked ? '🔒' : '🔓'}
         </button>
         <!-- Bookmark Button -->
-        <button
+        <button aria-label={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
           onclick={() => onToggleBookmark(segment.id)}
           class="text-xs leading-none transition-transform hover:scale-125 {segment.bookmarked ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400'}"
           title={segment.bookmarked ? 'Bookmarked (Ctrl+B)' : 'Add bookmark (Ctrl+B)'}
@@ -1110,26 +1055,26 @@
 
       <!-- Elegant floating quick-action hover buttons on top right -->
       <div class="absolute top-1.5 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 dark:bg-gray-900/95 backdrop-blur-xs px-1 py-0.5 rounded-md border border-gray-200 dark:border-gray-700/80 shadow-xs z-10 {isSelected ? 'opacity-90' : ''}">
-        <button
+        <button aria-label="Copy Source (Alt+Ins)"
           type="button"
           onclick={handleCopySource}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Copy Source (Alt+Ins)"
         >📋</button>
-        <button
+        <button aria-label="Clear Target"
           type="button"
           onclick={handleClearTarget}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Clear Target"
         >🧹</button>
-        <button
+        <button aria-label="Split Segment (Ctrl+Alt+S)"
           type="button"
           onclick={() => onSplit(segment.id)}
           class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           title="Split Segment (Ctrl+Alt+S)"
         >✂</button>
         {#if canMergeNext}
-          <button
+          <button aria-label="Merge Next (Ctrl+J)"
             type="button"
             onclick={() => onMergeNext(segment.id)}
             class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -1137,7 +1082,7 @@
           >⤹</button>
         {/if}
         {#if canMergePrev}
-          <button
+          <button aria-label="Merge Prev (Ctrl+Shift+J)"
             type="button"
             onclick={() => onMergePrev(segment.id)}
             class="p-1 rounded text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

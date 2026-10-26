@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * TM Maintenance Studio — /tm/[id]
    * Trados-style Translation Memory maintenance interface:
@@ -344,7 +345,7 @@
 
 <!-- Batch Find and Replace Modal -->
 {#if showBatchReplaceModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+  <div use:dialog={{ label: "Batch Find & Replace across TM" }} class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
       <h3 class="text-base font-bold text-gray-900 dark:text-white mb-1">
         Batch Find & Replace across TM

@@ -107,15 +107,22 @@ impl SegmentStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> SegmentStatus {
+    /// Strict parse: `None` for anything that isn't a known status name.
+    pub fn parse(s: &str) -> Option<SegmentStatus> {
         match s {
-            "draft"        => SegmentStatus::Draft,
-            "translated"   => SegmentStatus::Translated,
-            "needs_review" => SegmentStatus::NeedsReview,
-            "reviewed"     => SegmentStatus::Reviewed,
-            "final"        => SegmentStatus::Final,
-            _              => SegmentStatus::New,
+            "new"          => Some(SegmentStatus::New),
+            "draft"        => Some(SegmentStatus::Draft),
+            "translated"   => Some(SegmentStatus::Translated),
+            "needs_review" => Some(SegmentStatus::NeedsReview),
+            "reviewed"     => Some(SegmentStatus::Reviewed),
+            "final"        => Some(SegmentStatus::Final),
+            _              => None,
         }
+    }
+
+    /// Lenient parse used when reading stored data: unknown values become `New`.
+    pub fn from_str(s: &str) -> SegmentStatus {
+        Self::parse(s).unwrap_or(SegmentStatus::New)
     }
 }
 

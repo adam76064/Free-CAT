@@ -95,7 +95,7 @@ pub async fn import_alignment_to_tm(
     args: ImportAlignmentTmArgs,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let tm_entry = state.tm_index.lock().unwrap()
+    let tm_entry = state.tm_index.lock()
         .iter()
         .find(|e| e.id == args.tm_id)
         .cloned()

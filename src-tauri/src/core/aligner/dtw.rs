@@ -18,7 +18,8 @@ pub struct AlignedPair {
 
 /// Extract numbers and numeric entities from text to serve as strong anchors
 fn extract_anchors(text: &str) -> HashSet<String> {
-    let re = Regex::new(r"\b\d+([.,]\d+)?\b").unwrap();
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"\b\d+([.,]\d+)?\b").unwrap());
     re.find_iter(text)
         .map(|m| m.as_str().replace(',', "."))
         .collect()

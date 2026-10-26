@@ -62,6 +62,7 @@ pub fn run() {
             commands::segment::merge_segments,
             commands::segment::toggle_bookmark,
             commands::segment::toggle_segment_lock,
+            commands::segment::batch_update_segments,
             commands::segment::update_segment_comment,
             commands::segment::get_segment_history,
             commands::segment::get_combined_segments,
@@ -119,6 +120,9 @@ pub fn run() {
             // AI assistant commands
             commands::ai::query_ai_assistant,
             commands::ai::query_document_ai_copilot,
+            // Secrets (write-only API key storage)
+            commands::secrets::set_secret,
+            commands::secrets::has_secret,
             // Aligner commands
             commands::aligner::align_texts,
             commands::aligner::align_files,

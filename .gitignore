@@ -19,3 +19,4 @@ src-tauri/WixTools/
 Thumbs.db
 .vscode/
 .idea/
+/src-tauri/gen/

@@ -220,7 +220,7 @@
 
     <!-- Previous / Next buttons -->
     <div class="flex items-center gap-0.5">
-      <button
+      <button aria-label="Previous match (Shift+Enter)"
         on:click={handlePrev}
         disabled={matches.length === 0}
         title="Previous match (Shift+Enter)"
@@ -228,7 +228,7 @@
       >
         ▲
       </button>
-      <button
+      <button aria-label="Next match (Enter)"
         on:click={handleNext}
         disabled={matches.length === 0}
         title="Next match (Enter)"
@@ -283,7 +283,7 @@
     </button>
 
     <!-- Close button -->
-    <button
+    <button aria-label="Close (Esc)"
       on:click={onClose}
       class="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs p-1"
       title="Close (Esc)"

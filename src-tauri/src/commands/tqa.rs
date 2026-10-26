@@ -40,7 +40,7 @@ pub async fn add_tqa_error(
         created_at: now,
     };
 
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let inserted_id = db.insert_tqa_error(&error_record)
         .map_err(|e| e.to_string())?;
 
@@ -55,7 +55,7 @@ pub async fn delete_tqa_error(
     id: i64,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.delete_tqa_error(id)
         .map_err(|e| e.to_string())
 }
@@ -66,7 +66,7 @@ pub async fn get_segment_tqa_errors(
     segment_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TqaError>, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.get_tqa_errors_for_segment(&segment_id)
         .map_err(|e| e.to_string())
 }
@@ -79,7 +79,7 @@ pub async fn get_tqa_scorecard(
     state: State<'_, AppState>,
 ) -> Result<TqaScorecard, String> {
     let words = total_words.unwrap_or(0);
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.get_project_tqa_scorecard(&project_id, words)
         .map_err(|e| e.to_string())
 }

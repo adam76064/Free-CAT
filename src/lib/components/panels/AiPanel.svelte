@@ -35,7 +35,7 @@
         provider: 'openai',
         endpoint: 'https://api.openai.com/v1',
         model: model || 'gpt-4o-mini',
-        api_key: $settings.deepl_api_key,
+        // OpenAI key is resolved from the OS keychain by the backend
       };
     } else {
       return {
@@ -132,7 +132,7 @@
         {provider === 'ollama' ? 'Offline (Ollama)' : 'Cloud (OpenAI)'}
       </span>
     </div>
-    <button
+    <button aria-label="Configure AI model"
       type="button"
       onclick={() => showConfig = !showConfig}
       class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 cursor-pointer"

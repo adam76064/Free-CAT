@@ -9,4 +9,5 @@ pub mod ai;
 pub mod aligner;
 pub mod packages;
 pub mod analysis;
+pub mod secrets;
 

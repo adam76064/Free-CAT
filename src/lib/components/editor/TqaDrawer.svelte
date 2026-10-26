@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * TqaDrawer — Interactive TAUS DQF-MQM Translation Quality Assessment Studio
    * Inspired by SDL Trados Studio Chapter 40 (Verification & TQA).
@@ -127,7 +128,7 @@
 </script>
 
 {#if isOpen}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex justify-end animate-in fade-in duration-150">
+  <div use:dialog={{ label: "Translation Quality Assessment (TQA)" }} class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex justify-end animate-in fade-in duration-150">
     <div class="w-full max-w-md bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col border-l border-gray-200 dark:border-gray-800 animate-in slide-in-from-right duration-200">
       
       <!-- Header -->
@@ -311,7 +312,7 @@
                       <p class="text-gray-600 dark:text-gray-400 text-xs mt-0.5">{err.comment}</p>
                     {/if}
                   </div>
-                  <button
+                  <button aria-label="Delete Error"
                     type="button"
                     on:click={() => handleDeleteError(err.id)}
                     class="text-gray-400 hover:text-red-500 p-1 text-xs transition-colors"

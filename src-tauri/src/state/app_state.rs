@@ -2,7 +2,7 @@
 // Global application state shared across all Tauri commands via tauri::State<AppState>.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use anyhow::Result;
 
 use crate::core::db::project_db::ProjectDb;
@@ -73,7 +73,7 @@ impl AppState {
     }
 
     pub fn save_tm_index(&self) -> Result<()> {
-        let tms = self.tm_index.lock().unwrap().clone();
+        let tms = self.tm_index.lock().clone();
         let index = TmIndexFile { tms };
         let content = toml::to_string_pretty(&index)?;
         let path = self.data_dir.join("tm").join("index.toml");
@@ -82,7 +82,7 @@ impl AppState {
     }
 
     pub fn save_tb_index(&self) -> Result<()> {
-        let tbs = self.tb_index.lock().unwrap().clone();
+        let tbs = self.tb_index.lock().clone();
         let index = TbIndexFile { tbs };
         let content = toml::to_string_pretty(&index)?;
         let path = self.data_dir.join("tb").join("index.toml");

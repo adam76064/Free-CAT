@@ -32,7 +32,8 @@ pub fn repair_fuzzy_match(
     let mut changes = Vec::new();
 
     // 1. Numeric Entity Repair
-    let num_re = Regex::new(r"\b\d+([.,]\d+)?\b").unwrap();
+    static NUM_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let num_re = NUM_RE.get_or_init(|| Regex::new(r"\b\d+([.,]\d+)?\b").unwrap());
     let query_nums: Vec<&str> = num_re.find_iter(query_source).map(|m| m.as_str()).collect();
     let tm_source_nums: Vec<&str> = num_re.find_iter(tm_source).map(|m| m.as_str()).collect();
 

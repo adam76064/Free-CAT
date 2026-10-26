@@ -24,9 +24,15 @@
 </script>
 
 <!-- Fixed to top-right, pointer-events-none so it doesn't block clicks -->
-<div class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none w-80">
+<div
+  class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none w-80"
+  role="region"
+  aria-label="Notifications"
+  aria-live="polite"
+>
   {#each $toast as t (t.id)}
     <div
+      role={t.type === 'error' ? 'alert' : undefined}
       class="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-2xl
              backdrop-blur-sm {wrapperCls[t.type]}"
     >

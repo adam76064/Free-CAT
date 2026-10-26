@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ShowMore from '$lib/components/ui/ShowMore.svelte';
+  import { dialog } from '$lib/actions/dialog';
   // src/routes/tb/+page.svelte — Studio-grade Termbase Management Workbench
   import { onMount } from 'svelte';
   import { open, save } from '@tauri-apps/plugin-dialog';
@@ -17,6 +19,8 @@
 
   // Search filter
   let termFilter = $state('');
+  const TERM_PAGE = 300;
+  let termLimit = $state(TERM_PAGE);
 
   // New Termbase Modal state
   let showCreateTbModal = $state(false);
@@ -178,6 +182,13 @@
     }
   }
 
+  // Reset paging when the user searches or switches termbase (not when a term is edited)
+  $effect(() => {
+    termFilter;
+    selectedTbId;
+    termLimit = TERM_PAGE;
+  });
+
   let selectedTb = $derived(termbases.find(t => t.id === selectedTbId));
   let filteredTerms = $derived(
     terms.filter(t => {
@@ -262,7 +273,7 @@
               >
                 ↓ Export
               </button>
-              <button
+              <button aria-label="Delete termbase"
                 onclick={(e) => { e.stopPropagation(); handleDeleteTb(tb); }}
                 class="ml-auto px-1.5 py-0.5 text-[10px] rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                 title="Delete termbase"
@@ -341,7 +352,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-gray-800/60 text-xs">
-                {#each filteredTerms as t (t.id ?? t.term)}
+                {#each filteredTerms.slice(0, termLimit) as t (t.id ?? t.term)}
                   <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <td class="py-3 px-4 font-semibold text-gray-900 dark:text-white font-editor">
                       {t.term}
@@ -384,7 +395,7 @@
                       {/if}
                     </td>
                     <td class="py-3 px-4 text-right">
-                      <button
+                      <button aria-label="Delete term"
                         onclick={() => handleDeleteTerm(t.id)}
                         class="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                         title="Delete term"
@@ -394,6 +405,13 @@
                     </td>
                   </tr>
                 {/each}
+                {#if filteredTerms.length > termLimit}
+                  <tr>
+                    <td colspan="6">
+                      <ShowMore shown={termLimit} total={filteredTerms.length} step={TERM_PAGE} onmore={() => (termLimit += TERM_PAGE)} />
+                    </td>
+                  </tr>
+                {/if}
               </tbody>
             </table>
           </div>
@@ -420,7 +438,7 @@
 
 <!-- Create Termbase Modal -->
 {#if showCreateTbModal}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+  <div use:dialog={{ label: "Create New Termbase" }} class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-800">
       <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Create New Termbase</h3>
       <div class="space-y-4">
@@ -455,7 +473,7 @@
 
 <!-- Add Term Modal -->
 {#if showAddTermModal}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+  <div use:dialog={{ label: "Add Term to Glossary" }} class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 border border-gray-200 dark:border-gray-800">
       <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Add Term to Glossary</h3>
       <div class="space-y-3">

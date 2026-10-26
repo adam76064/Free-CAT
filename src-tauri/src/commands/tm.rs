@@ -28,7 +28,7 @@ pub async fn query_tm(
     args: QueryTmArgs,
     state: State<'_, AppState>,
 ) -> Result<Vec<TmMatchResult>, String> {
-    let tm_index = state.tm_index.lock().unwrap().clone();
+    let tm_index = state.tm_index.lock().clone();
 
     let candidates: Vec<_> = if args.tm_ids.is_empty() {
         tm_index.iter().filter(|e| (e.src_lang == args.src_lang && e.tgt_lang == args.tgt_lang) || e.id.starts_with("proj-tm-")).collect()
@@ -98,7 +98,7 @@ pub async fn query_fragments(
     args: QueryFragmentsArgs,
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::core::tm::fragment::FragmentMatch>, String> {
-    let tm_index = state.tm_index.lock().unwrap().clone();
+    let tm_index = state.tm_index.lock().clone();
 
     let candidates: Vec<_> = if args.tm_ids.is_empty() {
         tm_index.iter().filter(|e| (e.src_lang == args.src_lang && e.tgt_lang == args.tgt_lang) || e.id.starts_with("proj-tm-")).collect()
@@ -146,7 +146,7 @@ pub async fn add_to_tm(
     args: AddToTmArgs,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let tm_entry = state.tm_index.lock().unwrap()
+    let tm_entry = state.tm_index.lock()
         .iter()
         .find(|e| e.id == args.tm_id)
         .cloned()
@@ -183,7 +183,7 @@ pub async fn import_tmx(
     tmx_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    let tm_entry = state.tm_index.lock().unwrap()
+    let tm_entry = state.tm_index.lock()
         .iter()
         .find(|e| e.id == tm_id)
         .cloned()
@@ -211,7 +211,7 @@ pub async fn export_tmx(
     out_path: String,
     state: State<'_, AppState>,
 ) -> Result<u64, String> {
-    let tm_entry = state.tm_index.lock().unwrap()
+    let tm_entry = state.tm_index.lock()
         .iter()
         .find(|e| e.id == tm_id)
         .cloned()
@@ -235,7 +235,7 @@ pub async fn export_tmx(
 pub async fn list_tms(
     state: State<'_, AppState>,
 ) -> Result<Vec<TmInfo>, String> {
-    let index = state.tm_index.lock().unwrap().clone();
+    let index = state.tm_index.lock().clone();
     let mut infos = Vec::new();
     for entry in index {
         if let Ok(tm) = TmDb::open(entry.id.clone(), entry.name.clone(), entry.path) {
@@ -280,7 +280,7 @@ pub async fn create_tm(
         path,
     };
 
-    state.tm_index.lock().unwrap().push(entry);
+    state.tm_index.lock().push(entry);
     state.save_tm_index().map_err(|e| e.to_string())?;
 
     Ok(TmInfo {
@@ -299,7 +299,7 @@ pub async fn delete_tm(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let path = {
-        let mut index = state.tm_index.lock().unwrap();
+        let mut index = state.tm_index.lock();
         let pos = index.iter().position(|e| e.id == tm_id)
             .ok_or_else(|| format!("TM {} not found", tm_id))?;
         let entry = index.remove(pos);
@@ -322,7 +322,7 @@ pub async fn get_tm_stats(
     tm_id: String,
     state: State<'_, AppState>,
 ) -> Result<TmInfo, String> {
-    let entry = state.tm_index.lock().unwrap()
+    let entry = state.tm_index.lock()
         .iter().find(|e| e.id == tm_id).cloned()
         .ok_or_else(|| format!("TM {} not found", tm_id))?;
 
@@ -346,7 +346,7 @@ pub async fn concordance_search(
     limit:   usize,
     state: State<'_, AppState>,
 ) -> Result<Vec<TranslationUnit>, String> {
-    let index = state.tm_index.lock().unwrap().clone();
+    let index = state.tm_index.lock().clone();
     let mut all: Vec<TranslationUnit> = Vec::new();
 
     let candidates: Vec<_> = if tm_ids.is_empty() {
@@ -384,7 +384,7 @@ pub async fn get_tm_tus_paginated(
     search: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<PaginatedTusResult, String> {
-    let entry = state.tm_index.lock().unwrap()
+    let entry = state.tm_index.lock()
         .iter().find(|e| e.id == tm_id).cloned()
         .ok_or_else(|| format!("TM {} not found", tm_id))?;
 
@@ -411,7 +411,7 @@ pub async fn update_tm_tu(
     target_text: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let entry = state.tm_index.lock().unwrap()
+    let entry = state.tm_index.lock()
         .iter().find(|e| e.id == tm_id).cloned()
         .ok_or_else(|| format!("TM {} not found", tm_id))?;
 
@@ -431,7 +431,7 @@ pub async fn delete_tm_tu(
     tu_id: i64,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let entry = state.tm_index.lock().unwrap()
+    let entry = state.tm_index.lock()
         .iter().find(|e| e.id == tm_id).cloned()
         .ok_or_else(|| format!("TM {} not found", tm_id))?;
 
@@ -453,7 +453,7 @@ pub async fn batch_replace_tm(
     target_only: bool,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let entry = state.tm_index.lock().unwrap()
+    let entry = state.tm_index.lock()
         .iter().find(|e| e.id == tm_id).cloned()
         .ok_or_else(|| format!("TM {} not found", tm_id))?;
 

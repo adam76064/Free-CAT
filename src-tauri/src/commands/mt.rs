@@ -26,6 +26,16 @@ pub async fn get_mt_suggestion(
     args: MtArgs,
     _state: State<'_, AppState>,
 ) -> Result<MtResult, String> {
+    let mut args = args;
+    // Prefer the OS keychain; a key passed from the frontend is only a fallback.
+    let secret_name = match args.engine.as_str() {
+        "deepl" => Some("deepl"),
+        "google" => Some("google_translate"),
+        _ => None,
+    };
+    if let Some(name) = secret_name {
+        args.api_key = crate::core::secrets::resolve(args.api_key.take(), name);
+    }
     match args.engine.as_str() {
         "deepl" => translate_deepl(args).await,
         "libretranslate" => translate_libre(args).await,

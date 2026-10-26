@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
+  import { highlightMatches } from '$lib/utils/html';
   /**
    * ConcordanceModal.svelte — Trados-style Concordance Search HUD (F3)
    * High-speed bidirectional FTS5 search across all project TMs.
@@ -71,22 +73,12 @@
     }
   }
 
-  function highlightMatches(text: string, q: string): string {
-    if (!q || !text) return text;
-    try {
-      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`(${escaped})`, 'gi');
-      return text.replace(re, '<mark class="bg-amber-200 dark:bg-amber-900/80 text-amber-950 dark:text-amber-100 rounded px-0.5 font-bold">$1</mark>');
-    } catch {
-      return text;
-    }
-  }
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
 {#if isOpen}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 select-none">
+  <div use:dialog={{ label: "Concordance search" }} class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 select-none">
     <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-3xl w-full flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95">
       <!-- Header -->
       <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">

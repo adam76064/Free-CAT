@@ -197,6 +197,20 @@ export function updateSegmentInStore(id: string, changes: Partial<Segment>) {
   );
 }
 
+/**
+ * Apply many changes in one store update: O(n) total, instead of the O(n²)
+ * of calling updateSegmentInStore once per segment (which re-maps the whole list each time).
+ */
+export function updateSegmentsInStore(changes: ReadonlyMap<string, Partial<Segment>>) {
+  if (changes.size === 0) return;
+  segments.update(segs =>
+    segs.map(s => {
+      const c = changes.get(s.id);
+      return c ? { ...s, ...c } : s;
+    })
+  );
+}
+
 // Status display helpers
 export const STATUS_LABELS: Record<SegmentStatus, string> = {
   new:         'New',

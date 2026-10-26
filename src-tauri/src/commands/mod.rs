@@ -10,4 +10,5 @@ pub mod file_io;
 pub mod ai;
 pub mod aligner;
 pub mod tqa;
+pub mod secrets;
 

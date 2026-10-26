@@ -37,7 +37,7 @@ pub async fn create_project(
             tgt_lang: args.tgt_lang.clone(),
             path: tm_path,
         };
-        state.tm_index.lock().unwrap().push(entry);
+        state.tm_index.lock().push(entry);
         let _ = state.save_tm_index();
     }
 
@@ -67,7 +67,7 @@ pub async fn create_project(
 
     // Persist to DB
     state.project_db
-        .lock().unwrap()
+        .lock()
         .insert_project(&project)
         .map_err(|e| e.to_string())?;
 
@@ -81,7 +81,7 @@ pub async fn list_projects(
     state: State<'_, AppState>,
 ) -> Result<Vec<Project>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .list_projects()
         .map_err(|e| e.to_string())
 }
@@ -93,7 +93,7 @@ pub async fn get_project(
     state: State<'_, AppState>,
 ) -> Result<Option<Project>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .get_project(&id)
         .map_err(|e| e.to_string())
 }
@@ -106,7 +106,7 @@ pub async fn open_project(
     state: State<'_, AppState>,
 ) -> Result<(Project, Vec<ProjectFile>), String> {
     let mut project = {
-        let db = state.project_db.lock().unwrap();
+        let db = state.project_db.lock();
         db.get_project(&id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Project {} not found", id))?
@@ -119,7 +119,7 @@ pub async fn open_project(
 
     // Ensure TM exists in index
     {
-        let mut tm_index = state.tm_index.lock().unwrap();
+        let mut tm_index = state.tm_index.lock();
         if !tm_index.iter().any(|e| e.id == tm_id) {
             if let Ok(_tm) = TmDb::open(tm_id.clone(), tm_name.clone(), tm_path.clone()) {
                 tm_index.push(TmEntry {
@@ -144,14 +144,14 @@ pub async fn open_project(
     if modified {
         if let Ok(new_settings_json) = serde_json::to_string(&settings) {
             project.settings = new_settings_json;
-            let db = state.project_db.lock().unwrap();
+            let db = state.project_db.lock();
             let _ = db.update_project_settings(&project.id, &project.settings);
         }
     }
 
     // Backfill any confirmed segments into the project TM
     if let Ok(tm) = TmDb::open(tm_id, tm_name, tm_path) {
-        let db = state.project_db.lock().unwrap();
+        let db = state.project_db.lock();
         if let Ok(files) = db.get_files_for_project(&project.id) {
             for f in files {
                 if let Ok(segs) = db.get_segments_for_file(&f.id) {
@@ -180,7 +180,7 @@ pub async fn open_project(
         }
     }
 
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let files = db.get_files_for_project(&id)
         .map_err(|e| e.to_string())?;
     Ok((project, files))
@@ -193,7 +193,7 @@ pub async fn delete_project(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .delete_project(&id)
         .map_err(|e| e.to_string())?;
 
@@ -213,7 +213,7 @@ pub async fn export_fcat(
     out_path: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let out = std::path::Path::new(&out_path);
     crate::core::packages::fcat::export_fcat(&project_id, &db, out)
         .map_err(|e| e.to_string())?;
@@ -227,7 +227,7 @@ pub async fn import_fcat(
     fcat_path: String,
     state: State<'_, AppState>,
 ) -> Result<Project, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let path = std::path::Path::new(&fcat_path);
     let proj = crate::core::packages::fcat::import_fcat(path, &db, &state.data_dir)
         .map_err(|e| e.to_string())?;

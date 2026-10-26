@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * CommandPalette — Global Omni-Action modal for keyboard-first navigation (Ctrl+K).
    * Provides lightning-fast access to any action without taking hands off the keyboard.
@@ -197,7 +198,7 @@
   <!-- Backdrop -->
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div
+  <div use:dialog={{ label: "Command palette" }}
     class="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-100"
     on:click|self={close}
   >

@@ -2,15 +2,20 @@
   import '../app.css';
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import { settings, applyTheme } from '$lib/stores/settings';
   import Icon from '$lib/components/ui/Icon.svelte';
   import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 
+  // Theme is applied by the settings store at startup; here we only follow
+  // OS changes while the user's choice is 'system'.
   onMount(() => {
-    const stored = localStorage.getItem('theme');
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (stored === 'dark' || (!stored && systemDark)) {
-      document.documentElement.classList.add('dark');
-    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => {
+      if (get(settings).theme === 'system') applyTheme('system');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
   });
 
   $: pathname = $page.url.pathname;

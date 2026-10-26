@@ -37,11 +37,11 @@ pub fn export_pairs_to_tmx(
 <tmx version="1.4">
   <header
     creationtool="Free-CAT"
-    creationtoolversion="0.2.0"
+    creationtoolversion="{VERSION}"
     segtype="sentence"
     o-tmf="Free-CAT Aligner"
     adminlang="en"
-    srclang=""#);
+    srclang=""#).replace("{VERSION}", env!("CARGO_PKG_VERSION"));
     xml.push_str(src_lang);
     xml.push_str(r#""
     datatype="PlainText"

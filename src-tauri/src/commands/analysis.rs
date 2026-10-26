@@ -13,7 +13,7 @@ pub async fn analyze_project(
     file_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<AnalysisReport, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
 
     let mut report = AnalysisReport {
         project_id:     project_id.clone(),
@@ -99,7 +99,7 @@ pub async fn pre_translate(
     let overwrite = args.overwrite.unwrap_or(false);
 
     let (src_lang, tgt_lang, tm_ids) = {
-        let db = state.project_db.lock().unwrap();
+        let db = state.project_db.lock();
         let proj = db.get_project(&args.project_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Project {} not found", args.project_id))?;
@@ -116,7 +116,7 @@ pub async fn pre_translate(
     }
 
     // Open TMs
-    let tm_entries = state.tm_index.lock().unwrap().clone();
+    let tm_entries = state.tm_index.lock().clone();
     let mut open_tms = Vec::new();
     for entry in tm_entries.iter().filter(|e| tm_ids.contains(&e.id)) {
         if let Ok(tm) = TmDb::open(entry.id.clone(), entry.name.clone(), entry.path.clone()) {
@@ -128,7 +128,7 @@ pub async fn pre_translate(
     let mut pretranslated = 0;
     let mut words_filled = 0;
 
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     for file_id in &args.file_ids {
         let segments = db.get_segments_for_file(file_id)
             .map_err(|e| e.to_string())?;
@@ -217,7 +217,7 @@ pub async fn get_detailed_analysis(
     file_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<DetailedAnalysisReport, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
 
     let mut repetitions_words = 0;
     let mut repetitions_segs = 0;
@@ -406,7 +406,7 @@ pub async fn pseudotranslate_file(
     let overwrite = args.overwrite_confirmed.unwrap_or(false);
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let segments = db.get_segments_for_file(&args.file_id)
         .map_err(|e| e.to_string())?;
 

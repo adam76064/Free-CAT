@@ -1,11 +1,52 @@
 <script lang="ts">
   // Settings page — user preferences.
+  import { onMount } from 'svelte';
   import { settings } from '$lib/stores/settings';
+  import { setSecret, hasSecret, type SecretName } from '$lib/ipc/secrets';
 
   let s = $state({ ...$settings });
 
-  function save() {
+  // API keys live in the OS keychain and are write-only from the UI:
+  // we can store or remove one, and see whether one is set, but never read it back.
+  const KEY_FIELDS: { name: SecretName; label: string; placeholder: string; hint: string }[] = [
+    { name: 'deepl', label: 'DeepL API Key', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx', hint: 'Free tier: api-free.deepl.com (key ends in :fx)' },
+    { name: 'google_translate', label: 'Google Translate API Key', placeholder: 'AIza…', hint: 'Cloud Translation API v2 key' },
+    { name: 'openai', label: 'OpenAI API Key', placeholder: 'sk-…', hint: 'Used by the AI panel when the OpenAI provider is selected' },
+  ];
+  let keyStored = $state<Record<string, boolean>>({ deepl: false, google_translate: false, openai: false });
+  let keyDraft = $state<Record<string, string>>({ deepl: '', google_translate: '', openai: '' });
+  let keyError = $state<string | null>(null);
+
+  onMount(async () => {
+    for (const { name } of KEY_FIELDS) {
+      try { keyStored[name] = await hasSecret(name); } catch { /* keychain unavailable */ }
+    }
+  });
+
+  async function removeKey(name: SecretName) {
+    keyError = null;
+    try {
+      await setSecret(name, '');
+      keyStored[name] = false;
+    } catch (e) {
+      keyError = String(e);
+    }
+  }
+
+  async function save() {
     settings.set(s);
+    keyError = null;
+    for (const { name } of KEY_FIELDS) {
+      const value = keyDraft[name]?.trim();
+      if (!value) continue;
+      try {
+        await setSecret(name, value);
+        keyStored[name] = true;
+        keyDraft[name] = '';
+      } catch (e) {
+        keyError = String(e);
+      }
+    }
   }
 </script>
 
@@ -68,11 +109,31 @@
     <section class="mb-8">
       <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Machine Translation APIs</h2>
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-        <div class="px-4 py-3">
-          <label for="deepl-key" class="block text-sm font-medium text-gray-900 dark:text-white mb-1">DeepL API Key</label>
-          <input id="deepl-key" bind:value={s.deepl_api_key} type="password" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500" />
-          <p class="text-xs text-gray-400 mt-1">Free tier: api-free.deepl.com (key ends in :fx)</p>
-        </div>
+        {#each KEY_FIELDS as key (key.name)}
+          <div class="px-4 py-3">
+            <div class="flex items-center justify-between mb-1">
+              <label for="key-{key.name}" class="block text-sm font-medium text-gray-900 dark:text-white">{key.label}</label>
+              {#if keyStored[key.name]}
+                <span class="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+                  Stored in system keychain
+                  <button type="button" onclick={() => removeKey(key.name)} class="underline text-gray-500 hover:text-red-500">Remove</button>
+                </span>
+              {/if}
+            </div>
+            <input
+              id="key-{key.name}"
+              bind:value={keyDraft[key.name]}
+              type="password"
+              autocomplete="off"
+              placeholder={keyStored[key.name] ? '•••••••• (enter a new key to replace)' : key.placeholder}
+              class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            <p class="text-xs text-gray-400 mt-1">{key.hint}</p>
+          </div>
+        {/each}
+        {#if keyError}
+          <div class="px-4 py-2 text-xs text-red-500">{keyError}</div>
+        {/if}
         <div class="px-4 py-3">
           <label for="libre-url" class="block text-sm font-medium text-gray-900 dark:text-white mb-1">LibreTranslate URL</label>
           <input id="libre-url" bind:value={s.libretranslate_url} placeholder="http://localhost:5000" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500" />

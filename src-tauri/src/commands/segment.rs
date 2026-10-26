@@ -5,6 +5,7 @@ use chrono::Utc;
 
 use crate::state::AppState;
 use crate::core::models::{Segment, SegmentStatus, SegmentHistory};
+use crate::core::db::project_db::SegmentPatch;
 
 /// Get all segments for a file, ordered by seq_number.
 #[tauri::command]
@@ -14,7 +15,7 @@ pub async fn get_segments(
     state: State<'_, AppState>,
 ) -> Result<Vec<Segment>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .get_segments_for_file(&file_id)
         .map_err(|e| e.to_string())
 }
@@ -26,7 +27,7 @@ pub async fn get_combined_segments(
     state: State<'_, AppState>,
 ) -> Result<Vec<Segment>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .get_segments_for_files(&file_ids)
         .map_err(|e| e.to_string())
 }
@@ -38,7 +39,7 @@ pub async fn get_segment(
     state: State<'_, AppState>,
 ) -> Result<Option<Segment>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .get_segment_by_id(&segment_id)
         .map_err(|e| e.to_string())
 }
@@ -54,7 +55,7 @@ pub async fn split_segment(
     args: SplitSegmentArgs,
     state: State<'_, AppState>,
 ) -> Result<Vec<Segment>, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     let (seg1, seg2) = db.split_segment(&args.segment_id, args.split_index)
         .map_err(|e| e.to_string())?;
     Ok(vec![seg1, seg2])
@@ -71,7 +72,7 @@ pub async fn merge_segments(
     args: MergeSegmentsArgs,
     state: State<'_, AppState>,
 ) -> Result<Segment, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.merge_segments(&args.segment_id_1, &args.segment_id_2)
         .map_err(|e| e.to_string())
 }
@@ -81,7 +82,7 @@ pub async fn toggle_bookmark(
     segment_id: String,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.toggle_bookmark(&segment_id)
         .map_err(|e| e.to_string())
 }
@@ -91,7 +92,7 @@ pub async fn toggle_segment_lock(
     segment_id: String,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.toggle_segment_lock(&segment_id)
         .map_err(|e| e.to_string())
 }
@@ -111,12 +112,57 @@ pub async fn update_segment(
 ) -> Result<(), String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let status = SegmentStatus::from_str(&args.status);
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
 
     db.update_segment_target(&args.segment_id, &args.target_text, &status, &now)
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+pub struct BatchPatchArg {
+    pub segment_id: String,
+    #[serde(default)]
+    pub target_text: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub locked: Option<bool>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct BatchUpdateSegmentsArgs {
+    pub patches: Vec<BatchPatchArg>,
+}
+
+/// Apply many segment changes in a single transaction (batch copy/clear/lock/unlock).
+/// Validates every status up front, so a bad request changes nothing.
+/// Returns the number of segments changed.
+#[tauri::command]
+pub async fn batch_update_segments(
+    args: BatchUpdateSegmentsArgs,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let mut patches = Vec::with_capacity(args.patches.len());
+    for p in args.patches {
+        let status = match p.status.as_deref() {
+            None => None,
+            Some(s) => Some(
+                SegmentStatus::parse(s)
+                    .ok_or_else(|| format!("Unknown segment status: {s}"))?,
+            ),
+        };
+        patches.push(SegmentPatch {
+            id: p.segment_id,
+            target_text: p.target_text,
+            status,
+            locked: p.locked,
+        });
+    }
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let db = state.project_db.lock();
+    db.apply_segment_patches(&patches, &now).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -132,7 +178,7 @@ pub async fn edit_source_segment(
     state: State<'_, AppState>,
 ) -> Result<Segment, String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.update_segment_source(&args.segment_id, &args.source_text, &now)
         .map_err(|e| e.to_string())
 }
@@ -155,7 +201,7 @@ pub async fn confirm_segment(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
 
     // Update segment status → Translated
     db.update_segment_target(
@@ -213,7 +259,7 @@ pub async fn confirm_segment(
         tm_ids.push(default_proj_tm);
     }
 
-    let tm_index = state.tm_index.lock().unwrap().clone();
+    let tm_index = state.tm_index.lock().clone();
     for tm_id in &tm_ids {
         if let Some(entry) = tm_index.iter().find(|e| &e.id == tm_id) {
             if let Ok(tm) = crate::core::db::tm_db::TmDb::open(entry.id.clone(), entry.name.clone(), entry.path.clone()) {
@@ -252,7 +298,7 @@ pub async fn update_segment_comment(
     args: UpdateCommentArgs,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.update_segment_comment(&args.segment_id, args.comment.as_deref())
         .map_err(|e| e.to_string())
 }
@@ -262,7 +308,7 @@ pub async fn get_segment_history(
     segment_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<SegmentHistory>, String> {
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
     db.get_history_for_segment(&segment_id)
         .map_err(|e| e.to_string())
 }

@@ -14,6 +14,30 @@ export async function updateSegment(args: {
   return invoke('update_segment', { args });
 }
 
+export interface SegmentBatchPatch {
+  segment_id: string;
+  target_text?: string;
+  status?: string;
+  locked?: boolean;
+}
+
+/**
+ * Apply many segment changes in a single backend transaction. Returns how many
+ * segments changed. Large batches are sent in chunks (each chunk is atomic).
+ */
+export async function batchUpdateSegments(
+  patches: SegmentBatchPatch[],
+  chunkSize = 5000,
+): Promise<number> {
+  let changed = 0;
+  for (let i = 0; i < patches.length; i += chunkSize) {
+    changed += await invoke<number>('batch_update_segments', {
+      args: { patches: patches.slice(i, i + chunkSize) },
+    });
+  }
+  return changed;
+}
+
 export async function confirmSegment(args: {
   segment_id: string;
   target_text: string;

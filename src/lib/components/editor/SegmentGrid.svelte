@@ -8,14 +8,17 @@
   import { tick, onMount, onDestroy } from 'svelte';
   import {
     segments, selectedIndex, filteredSegments, selectedSegment,
-    filterMode, segmentSearch, updateSegmentInStore,
+    filterMode, segmentSearch, updateSegmentInStore, updateSegmentsInStore,
     progressStats, type FilterMode, type Segment
   } from '$lib/stores/segments';
   import { tmMatches, tmLoading } from '$lib/stores/tm';
+  import { tts } from '$lib/stores/tts';
+  import { batchPlans, planBatch, type BatchPlan, type SegmentPatch } from '$lib/utils/batchPlans';
   import { termMatches, tbLoading } from '$lib/stores/termbase';
   import { currentProject, currentFile, currentFiles, projectSettings } from '$lib/stores/project';
   import { qaResults, qaErrors } from '$lib/stores/qa';
   import SegmentRow from './SegmentRow.svelte';
+  import SplitSegmentModal from './SplitSegmentModal.svelte';
   import FindReplaceBar from './FindReplaceBar.svelte';
   import TmPanel from '$lib/components/panels/TmPanel.svelte';
   import TbPanel from '$lib/components/panels/TbPanel.svelte';
@@ -39,17 +42,62 @@
   import { SuggestionTrie, type SuggestionItem } from '$lib/utils/suggestTrie';
   import { queryTm, addToTm } from '$lib/ipc/tm';
   import { queryTb } from '$lib/ipc/termbase';
-  import { updateSegment, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark, toggleSegmentLock, editSourceSegment } from '$lib/ipc/segment';
+  import { updateSegment, batchUpdateSegments, confirmSegment, getSegments, splitSegment, mergeSegments, toggleBookmark, toggleSegmentLock, editSourceSegment } from '$lib/ipc/segment';
   import { settings } from '$lib/stores/settings';
   import { advancedFilter } from '$lib/stores/segments';
   import { runQa, preTranslate, exportBilingualReview, importBilingualReview } from '$lib/ipc/project';
   import { open } from '@tauri-apps/plugin-dialog';
   import { queryAiAssistant } from '$lib/ipc/ai';
   import { toast } from '$lib/stores/toast';
+  import { WindowedList, observeHeight } from '$lib/utils/virtualWindow';
 
   // Auto-save debounce handle
   let autoSaveTimer: ReturnType<typeof setTimeout>;
   let gridContainer: HTMLDivElement;
+
+  // ── Windowed rendering ────────────────────────────────────────────────────
+  // Only rows near the viewport are mounted; the rest are represented by
+  // padding. Row heights vary, so they are measured as rows render
+  // (see WindowedList in utils/virtualWindow.ts).
+  const windowed = new WindowedList(76, 800); // SegmentRow min height is 4.5rem (72px)
+  let listEl: HTMLDivElement;
+  let viewportH = 800;
+  let winStart = 0;
+  let winEnd = 0;
+  let topPad = 0;
+  let bottomPad = 0;
+  let windowRaf = 0;
+
+  function listOffset(): number {
+    if (!gridContainer || !listEl) return 0;
+    return listEl.getBoundingClientRect().top
+      - gridContainer.getBoundingClientRect().top
+      + gridContainer.scrollTop;
+  }
+
+  function recomputeWindow() {
+    const scrollTop = gridContainer ? gridContainer.scrollTop - listOffset() : 0;
+    const w = windowed.window(scrollTop, viewportH);
+    winStart = w.start;
+    winEnd = w.end;
+    topPad = w.topPad;
+    bottomPad = w.bottomPad;
+  }
+
+  function scheduleWindowUpdate() {
+    if (windowRaf) return;
+    windowRaf = requestAnimationFrame(() => {
+      windowRaf = 0;
+      recomputeWindow();
+    });
+  }
+
+  function onRowHeight(id: string, height: number) {
+    if (windowed.setRowHeight(id, height)) scheduleWindowUpdate();
+  }
+
+  $: { windowed.sync($filteredSegments); recomputeWindow(); }
+  $: if (viewportH) scheduleWindowUpdate();
   let isResultsPaneOpen = true;
   let resultsPaneHeight = 150;
   let isDrawerOpen = false;
@@ -65,9 +113,6 @@
   let isAutoTextOpen = false;
   let isWebLookupOpen = false;
   let webLookupQuery = '';
-  let isTtsPlaying = false;
-  let isTtsContinuous = false;
-  let ttsRate = 1.0;
   let focusIsOnSource = false;
   let tqaDrawerComponent: TqaDrawer;
   let concordanceInitialQuery = '';
@@ -214,51 +259,11 @@
 
   // Split Segment modal state
   let segmentToSplit: Segment | null = null;
-  let splitSliderPos = 1;
 
-  // Text-to-Speech (TTS) Acoustic Proofreading
-  function stopTts() {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    isTtsPlaying = false;
-  }
-
-  function speakText(text: string, lang: string, onEnd?: () => void) {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    if (!text.trim()) {
-      isTtsPlaying = false;
-      return;
-    }
-
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = ttsRate;
-    utter.lang = lang || 'en';
-
-    try {
-      const voices = window.speechSynthesis.getVoices();
-      const matched = voices.find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2)));
-      if (matched) utter.voice = matched;
-    } catch (e) {
-      /* ignore */
-    }
-
-    utter.onend = () => {
-      isTtsPlaying = false;
-      if (onEnd) onEnd();
-    };
-    utter.onerror = () => {
-      isTtsPlaying = false;
-    };
-
-    isTtsPlaying = true;
-    window.speechSynthesis.speak(utter);
-  }
-
+  // Text-to-Speech (TTS) Acoustic Proofreading — engine and state live in stores/tts.ts
   function toggleTtsPlayback() {
-    if (isTtsPlaying) {
-      stopTts();
+    if ($tts.playing) {
+      tts.stop();
       return;
     }
     playCurrentSegmentTts();
@@ -270,12 +275,12 @@
     const textToRead = seg.target_text.trim() || seg.source_text.trim();
     const lang = seg.target_text.trim() ? ($currentProject?.tgt_lang || 'en') : ($currentProject?.src_lang || 'en');
 
-    speakText(textToRead, lang, () => {
-      if (isTtsContinuous && $selectedIndex < $filteredSegments.length - 1) {
+    tts.speak(textToRead, lang, () => {
+      if ($tts.continuous && $selectedIndex < $filteredSegments.length - 1) {
         selectedIndex.update(i => i + 1);
         scrollToSelected();
         setTimeout(() => {
-          if (isTtsContinuous) playCurrentSegmentTts();
+          if ($tts.continuous) playCurrentSegmentTts();
         }, 300);
       }
     });
@@ -325,71 +330,42 @@
   }
 
   // Batch Segment Operations
-  async function handleBatchCopySourceToEmptyTarget() {
+  // Batch actions: the rules live in utils/batchPlans.ts. All changes are sent to
+  // the backend in one transaction and applied to the store in one update.
+  async function runBatch(title: string, plan: BatchPlan, describe: (count: number) => string) {
     if (!$currentProject || !$currentFile) return;
-    let count = 0;
-    for (const seg of $segments) {
-      if (!seg.target_text.trim() && !seg.locked) {
-        updateSegmentInStore(seg.id, {
-          target_text: seg.source_text,
-          status: 'draft',
-        });
-        await updateSegment({
-          segment_id: seg.id,
-          target_text: seg.source_text,
-          status: 'draft',
-        });
-        count++;
-      }
+    const work = planBatch($segments, plan);
+    if (work.length === 0) {
+      toast.success(title, describe(0));
+      return;
     }
-    toast.success('Batch Copy Source', `${count} empty segments filled with source text.`);
+    try {
+      await batchUpdateSegments(
+        work.map(({ segment, patch }) => ({ segment_id: segment.id, ...patch })),
+      );
+    } catch (e) {
+      toast.error(title, `Nothing was changed: ${e}`);
+      return;
+    }
+    updateSegmentsInStore(new Map(work.map(({ segment, patch }) => [segment.id, patch])));
+    toast.success(title, describe(work.length));
   }
 
-  async function handleBatchClearDraftTargets() {
-    if (!$currentProject || !$currentFile) return;
-    let count = 0;
-    for (const seg of $segments) {
-      if (seg.status === 'draft' && !seg.locked) {
-        updateSegmentInStore(seg.id, {
-          target_text: '',
-          status: 'new',
-        });
-        await updateSegment({
-          segment_id: seg.id,
-          target_text: '',
-          status: 'new',
-        });
-        count++;
-      }
-    }
-    toast.success('Batch Clear', `${count} draft segments cleared.`);
-  }
+  const handleBatchCopySourceToEmptyTarget = () =>
+    runBatch('Batch Copy Source', batchPlans.copySourceToEmpty,
+      (n) => `${n} empty segments filled with source text.`);
 
-  async function handleBatchLockConfirmed() {
-    if (!$currentProject || !$currentFile) return;
-    let count = 0;
-    for (const seg of $segments) {
-      if ((seg.status === 'translated' || seg.match_percent === 100) && !seg.locked) {
-        await toggleSegmentLock(seg.id);
-        updateSegmentInStore(seg.id, { locked: true });
-        count++;
-      }
-    }
-    toast.success('Batch Lock', `${count} confirmed/100% segments locked.`);
-  }
+  const handleBatchClearDraftTargets = () =>
+    runBatch('Batch Clear', batchPlans.clearDrafts,
+      (n) => `${n} draft segments cleared.`);
 
-  async function handleBatchUnlockAll() {
-    if (!$currentProject || !$currentFile) return;
-    let count = 0;
-    for (const seg of $segments) {
-      if (seg.locked) {
-        await toggleSegmentLock(seg.id);
-        updateSegmentInStore(seg.id, { locked: false });
-        count++;
-      }
-    }
-    toast.success('Batch Unlock', `${count} segments unlocked.`);
-  }
+  const handleBatchLockConfirmed = () =>
+    runBatch('Batch Lock', batchPlans.lockConfirmed,
+      (n) => `${n} confirmed/100% segments locked.`);
+
+  const handleBatchUnlockAll = () =>
+    runBatch('Batch Unlock', batchPlans.unlockAll,
+      (n) => `${n} segments unlocked.`);
 
   // Global keyboard shortcuts (Ctrl+F, Ctrl+H, Ctrl+\, Ctrl+K, Ctrl+L, F2, F3, F6, Ctrl+F8, Ctrl+Alt+R)
   function handleWindowKeydown(e: KeyboardEvent) {
@@ -459,7 +435,7 @@
   });
 
   onDestroy(() => {
-    stopTts();
+    tts.stop();
     window.removeEventListener('keydown', handleWindowKeydown);
     window.removeEventListener('pointermove', handlePointerMove);
     window.removeEventListener('pointerup', handlePointerUp);
@@ -473,8 +449,14 @@
     }
   }
 
+  // Latest-wins guards: when the user moves quickly between segments, a slow
+  // response for an earlier segment must not overwrite the current one's matches.
+  let tmRequestId = 0;
+  let tbRequestId = 0;
+
   async function lookupTm(sourceText: string) {
     if (!$currentProject) return;
+    const requestId = ++tmRequestId;
     activeAutoPatch = null;
     tmLoading.set(true);
     try {
@@ -485,6 +467,7 @@
         tm_ids: $projectSettings.tm_ids || [],
         threshold: $projectSettings.fuzzy_threshold || 0.7,
       });
+      if (requestId !== tmRequestId) return; // superseded by a newer lookup
       tmMatches.set(matches);
 
       // Auto-detect FMR repaired suggestion from top match
@@ -492,10 +475,11 @@
         activeAutoPatch = matches[0].repaired_target;
       }
     } catch (e) {
+      if (requestId !== tmRequestId) return;
       console.error('TM lookup failed:', e);
       tmMatches.set([]);
     } finally {
-      tmLoading.set(false);
+      if (requestId === tmRequestId) tmLoading.set(false);
     }
   }
 
@@ -544,6 +528,7 @@
 
   async function lookupTb(sourceText: string) {
     if (!$currentProject) return;
+    const requestId = ++tbRequestId;
     tbLoading.set(true);
     try {
       const matches = await queryTb({
@@ -551,12 +536,14 @@
         lang: $currentProject.src_lang,
         tb_ids: $projectSettings.tb_ids,
       });
+      if (requestId !== tbRequestId) return; // superseded by a newer lookup
       termMatches.set(matches);
     } catch (e) {
+      if (requestId !== tbRequestId) return;
       console.error('TB lookup failed:', e);
       termMatches.set([]);
     } finally {
-      tbLoading.set(false);
+      if (requestId === tbRequestId) tbLoading.set(false);
     }
   }
 
@@ -671,14 +658,22 @@
     }
   }
 
-  function scrollToSelected() {
+  async function scrollToSelected() {
     if (!gridContainer) return;
-    const rowHeight = 52;
-    const top = $selectedIndex * rowHeight;
-    const containerHeight = gridContainer.clientHeight;
-    if (top < gridContainer.scrollTop || top + rowHeight > gridContainer.scrollTop + containerHeight) {
-      gridContainer.scrollTop = top - containerHeight / 2;
+    await tick();
+    const findRow = () =>
+      gridContainer.querySelector('[aria-selected="true"]') as HTMLElement | null;
+    let row = findRow();
+    if (!row) {
+      // Selected row isn't mounted (outside the window): jump near it first,
+      // let the window render, then fine-tune using the real element.
+      const top = listOffset() + windowed.offsetOf($selectedIndex);
+      gridContainer.scrollTop = Math.max(0, top - gridContainer.clientHeight / 2);
+      recomputeWindow();
+      await tick();
+      row = findRow();
     }
+    row?.scrollIntoView({ block: 'nearest' });
   }
 
   function jumpToSegment(segId: string) {
@@ -694,15 +689,14 @@
     const seg = $segments.find(s => s.id === segId);
     if (!seg || seg.source_text.length <= 1) return;
     segmentToSplit = seg;
-    splitSliderPos = Math.max(1, Math.floor(seg.source_text.length / 2));
   }
 
-  async function confirmSplit() {
+  async function confirmSplit(splitIndex: number) {
     if (!segmentToSplit || !$currentFile || !$currentProject) return;
     try {
       await splitSegment({
         segment_id: segmentToSplit.id,
-        split_index: splitSliderPos,
+        split_index: splitIndex,
       });
       const reloaded = await getSegments($currentFile.id, $currentProject.id);
       segments.set(reloaded);
@@ -891,7 +885,7 @@
   <StudioRibbon
     {isQuickInsertOpen}
     {isResultsPaneOpen}
-    {isTtsPlaying}
+    isTtsPlaying={$tts.playing}
     hasSelectedSegment={!!$selectedSegment}
     isSegmentLocked={$selectedSegment ? $selectedSegment.locked : false}
     hasAutoPatch={!!activeAutoPatch}
@@ -1058,11 +1052,14 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div
       bind:this={gridContainer}
+      bind:clientHeight={viewportH}
       class="flex-1 overflow-y-auto"
+      on:scroll={scheduleWindowUpdate}
       on:keydown={handleGridKeydown}
       tabindex="-1"
       role="grid"
       aria-label="Translation editor"
+      aria-rowcount={$filteredSegments.length}
     >
       <!-- Column headers -->
       <div
@@ -1103,7 +1100,9 @@
           No segments match the filter
         </div>
       {:else}
-        {#each $filteredSegments as segment, i (segment.id)}
+        <div bind:this={listEl} style="padding-top: {topPad}px; padding-bottom: {bottomPad}px;">
+        {#each $filteredSegments.slice(winStart, winEnd) as segment, k (segment.id)}
+          {@const i = winStart + k}
           {#if (i === 0 || segment.file_id !== $filteredSegments[i - 1].file_id) && getFileName(segment.file_id)}
             <!-- Multi-File Virtual Document File Divider Banner -->
             <div class="px-3.5 py-1.5 bg-gradient-to-r from-brand-50 via-gray-50 to-white dark:from-brand-950/60 dark:via-gray-900 dark:to-gray-950 border-y border-brand-200 dark:border-brand-900/80 flex items-center justify-between text-xs select-none sticky top-[33px] z-10 shadow-2xs">
@@ -1120,8 +1119,10 @@
             </div>
           {/if}
 
+          <div use:observeHeight={(h) => onRowHeight(segment.id, h)} style="scroll-margin-top: 40px;">
           <SegmentRow
             {segment}
+            rowIndex={i + 1}
             isSelected={i === $selectedIndex}
             canMergePrev={i > 0}
             canMergeNext={i < $filteredSegments.length - 1}
@@ -1140,7 +1141,9 @@
             onToggleLock={handleToggleLock}
             onAiRefineAction={handleAiRefineAction}
           />
+          </div>
         {/each}
+        </div>
       {/if}
     </div>
 
@@ -1215,7 +1218,7 @@
             </button>
           </div>
 
-          <button
+          <button aria-label="Close Drawer"
             type="button"
             on:click={() => (isDrawerOpen = false)}
             class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 text-xs font-bold cursor-pointer transition-colors"
@@ -1264,26 +1267,26 @@
           type="button"
           on:click={toggleTtsPlayback}
           class="px-2 py-0.5 rounded font-semibold transition-colors flex items-center gap-1 cursor-pointer
-                 {isTtsPlaying ? 'bg-purple-600 text-white animate-pulse' : 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300'}"
+                 {$tts.playing ? 'bg-purple-600 text-white animate-pulse' : 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300'}"
           title="Text-to-Speech Acoustic Proofreading (Ctrl+Alt+R)"
         >
-          <span>{isTtsPlaying ? '⏸ Stop' : '🔊 Listen'}</span>
+          <span>{$tts.playing ? '⏸ Stop' : '🔊 Listen'}</span>
         </button>
         <button
           type="button"
-          on:click={() => (isTtsContinuous = !isTtsContinuous)}
-          class="px-1.5 py-0.5 rounded text-[10px] cursor-pointer {isTtsContinuous ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold' : 'text-gray-400 hover:text-gray-600'}"
+          on:click={tts.toggleContinuous}
+          class="px-1.5 py-0.5 rounded text-[10px] cursor-pointer {$tts.continuous ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold' : 'text-gray-400 hover:text-gray-600'}"
           title="Auto-read next segment continuously"
         >
-          Continuous: {isTtsContinuous ? 'ON' : 'OFF'}
+          Continuous: {$tts.continuous ? 'ON' : 'OFF'}
         </button>
         <button
           type="button"
-          on:click={() => { ttsRate = ttsRate === 1.0 ? 1.2 : ttsRate === 1.2 ? 1.5 : 1.0; }}
+          on:click={tts.cycleRate}
           class="px-1 py-0.5 rounded text-[10px] font-mono text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
           title="Playback speed"
         >
-          {ttsRate}x
+          {$tts.rate}x
         </button>
       </div>
     </div>
@@ -1333,14 +1336,14 @@
 
       <!-- Font size & Optical boost -->
       <div class="flex items-center gap-1 font-mono text-[11px]">
-        <button
+        <button aria-label="Decrease font size"
           type="button"
           on:click={() => settings.update(s => ({ ...s, fontSize: Math.max(12, s.fontSize - 1) }))}
           class="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-800 font-bold cursor-pointer"
           title="Decrease font size"
         >-</button>
         <span class="px-1">{$settings.fontSize}px</span>
-        <button
+        <button aria-label="Increase font size"
           type="button"
           on:click={() => settings.update(s => ({ ...s, fontSize: Math.min(24, s.fontSize + 1) }))}
           class="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-800 font-bold cursor-pointer"
@@ -1397,63 +1400,20 @@
   fileIds={$currentFile?.id ? [$currentFile.id] : []}
 />
 
+<!-- Announces the selected segment to screen readers (position only, so typing isn't noisy) -->
+<div class="sr-only" aria-live="polite" aria-atomic="true">
+  {#if $selectedSegment}
+    Segment {$selectedIndex + 1} of {$filteredSegments.length}{$selectedSegment.locked ? ', locked' : ''}
+  {/if}
+</div>
+
 <!-- Split Segment Modal -->
 {#if segmentToSplit}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-    <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95">
-      <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-1">
-        Split Segment #{segmentToSplit.seq_number}
-      </h3>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        Move the slider to choose the split boundary between Part 1 and Part 2.
-      </p>
-
-      <!-- Live split preview text -->
-      <div class="p-3 bg-gray-50 dark:bg-gray-800/80 rounded-lg text-sm mb-4 font-editor leading-relaxed border border-gray-200 dark:border-gray-700">
-        <span class="text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/40 rounded px-1">
-          {segmentToSplit.source_text.slice(0, splitSliderPos)}
-        </span>
-        <span class="text-red-500 font-bold px-0.5">|</span>
-        <span class="text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 rounded px-1">
-          {segmentToSplit.source_text.slice(splitSliderPos)}
-        </span>
-      </div>
-
-      <input
-        type="range"
-        min="1"
-        max={Math.max(1, segmentToSplit.source_text.length - 1)}
-        bind:value={splitSliderPos}
-        class="w-full accent-brand-500 mb-4 cursor-pointer"
-      />
-
-      <div class="grid grid-cols-2 gap-3 mb-6 text-xs">
-        <div class="p-2.5 rounded bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900">
-          <div class="font-semibold text-blue-700 dark:text-blue-400 mb-1">Segment {segmentToSplit.seq_number} (Part 1)</div>
-          <div class="text-gray-800 dark:text-gray-200 italic line-clamp-3">{segmentToSplit.source_text.slice(0, splitSliderPos)}</div>
-        </div>
-        <div class="p-2.5 rounded bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
-          <div class="font-semibold text-emerald-700 dark:text-emerald-400 mb-1">Segment {segmentToSplit.seq_number + 1} (Part 2)</div>
-          <div class="text-gray-800 dark:text-gray-200 italic line-clamp-3">{segmentToSplit.source_text.slice(splitSliderPos)}</div>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-end gap-2">
-        <button
-          on:click={() => segmentToSplit = null}
-          class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          on:click={confirmSplit}
-          class="px-4 py-1.5 text-xs font-medium text-white bg-brand-500 hover:bg-brand-600 rounded-lg shadow-sm transition-colors"
-        >
-          Split Segment
-        </button>
-      </div>
-    </div>
-  </div>
+  <SplitSegmentModal
+    segment={segmentToSplit}
+    onconfirm={confirmSplit}
+    oncancel={() => (segmentToSplit = null)}
+  />
 {/if}
 
 <ConcordanceModal

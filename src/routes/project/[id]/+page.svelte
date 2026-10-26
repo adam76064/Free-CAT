@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   // Project dashboard: shows files, progress, actions, and detailed analysis report.
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
@@ -396,7 +397,7 @@
 
 <!-- Detailed Analysis Report Modal -->
 {#if showAnalysisModal && analysis}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+  <div use:dialog={{ label: "Translation Analysis Report" }} class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
     <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95">
       <div class="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800 mb-4">
         <div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   // QuoteInvoiceModal.svelte — Freelancer Quoting & Invoicing Suite
   import { getDetailedAnalysis, type DetailedAnalysisReport, type AnalysisBand } from '$lib/ipc/project';
   import { currentProject, currentFiles } from '$lib/stores/project';
@@ -92,7 +93,7 @@
 </script>
 
 {#if isOpen}
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+  <div use:dialog={{ label: "Quote and invoice" }} class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
     <div
       class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
     >

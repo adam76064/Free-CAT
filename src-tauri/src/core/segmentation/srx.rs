@@ -83,7 +83,14 @@ fn is_potential_break(c: char) -> bool {
 }
 
 /// Get segmentation rules for a given language code.
-fn get_rules(_lang: &str) -> Vec<SegmentRule> {
+fn get_rules(_lang: &str) -> &'static [SegmentRule] {
+    // Rules are language-independent today and contain Unicode-class regexes that
+    // are expensive to compile, so build them once for the whole process.
+    static RULES: std::sync::OnceLock<Vec<SegmentRule>> = std::sync::OnceLock::new();
+    RULES.get_or_init(build_rules)
+}
+
+fn build_rules() -> Vec<SegmentRule> {
     let mut rules = Vec::new();
 
     // ── NO-BREAK rules (evaluated first) ──────────────────────────────────────

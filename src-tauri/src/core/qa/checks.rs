@@ -112,13 +112,33 @@ pub fn check_typography(seg: &Segment, tgt_lang: Option<&str>) -> Vec<QaIssue> {
     issues
 }
 
+/// Compile a user-supplied QA pattern once and reuse it for every segment.
+/// Invalid patterns are cached as `None` so they are not recompiled either.
+fn cached_user_regex(pattern: &str) -> Option<std::sync::Arc<regex::Regex>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, OnceLock};
+    static CACHE: OnceLock<parking_lot::Mutex<HashMap<String, Option<Arc<regex::Regex>>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+    let mut map = cache.lock();
+    if let Some(hit) = map.get(pattern) {
+        return hit.clone();
+    }
+    if map.len() >= 256 {
+        map.clear(); // rule sets are small; this only guards against unbounded growth
+    }
+    let compiled = regex::Regex::new(pattern).ok().map(Arc::new);
+    map.insert(pattern.to_string(), compiled.clone());
+    compiled
+}
+
 /// QA-12: Custom User Regex Rules
 pub fn check_custom_rules(seg: &Segment, rules: &[CustomQaRule]) -> Vec<QaIssue> {
     let mut issues = Vec::new();
     for rule in rules {
         let mut source_matched = true;
         if let Some(src_pat) = &rule.source_regex {
-            if let Ok(re) = regex::Regex::new(src_pat) {
+            if let Some(re) = cached_user_regex(src_pat) {
                 source_matched = re.is_match(&seg.source_text);
             }
         }
@@ -127,7 +147,7 @@ pub fn check_custom_rules(seg: &Segment, rules: &[CustomQaRule]) -> Vec<QaIssue>
         }
 
         if let Some(tgt_pat) = &rule.target_regex {
-            if let Ok(re) = regex::Regex::new(tgt_pat) {
+            if let Some(re) = cached_user_regex(tgt_pat) {
                 let tgt_matched = re.is_match(&seg.target_text);
                 if rule.forbid_target && tgt_matched {
                     issues.push(QaIssue {
@@ -411,7 +431,8 @@ pub fn check_cross_consistency(segments: &[Segment]) -> Vec<(String, QaIssue)> {
 
 /// Extract {N} style tag placeholders from text.
 fn extract_tags(text: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"\{(\d+)\}").unwrap();
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"\{(\d+)\}").unwrap());
     let mut tags: Vec<String> = re.captures_iter(text)
         .map(|c| c[0].to_string())
         .collect();
@@ -421,7 +442,8 @@ fn extract_tags(text: &str) -> Vec<String> {
 
 /// Extract numeric sequences from text (integers and decimals).
 fn extract_numbers(text: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"\b\d[\d,.]*\b").unwrap();
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"\b\d[\d,.]*\b").unwrap());
     re.find_iter(text)
         .map(|m| m.as_str().replace(',', ""))  // normalize 1,000 → 1000
         .collect()
@@ -497,5 +519,24 @@ mod tests {
 
         let issues = check_cross_consistency(&[seg1, seg2]);
         assert_eq!(issues.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::cached_user_regex;
+
+    #[test]
+    fn user_regex_cache_returns_same_compiled_regex() {
+        let a = cached_user_regex(r"\bfoo\b").unwrap();
+        let b = cached_user_regex(r"\bfoo\b").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&a, &b));
+        assert!(a.is_match("a foo b"));
+    }
+
+    #[test]
+    fn invalid_user_regex_is_none_every_time() {
+        assert!(cached_user_regex("(unclosed").is_none());
+        assert!(cached_user_regex("(unclosed").is_none());
     }
 }

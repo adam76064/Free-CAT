@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ShowMore from '$lib/components/ui/ShowMore.svelte';
   /**
    * Aligner Page — Visual Bilingual File & Document Aligner.
    * Powered by Dynamic Time Warping (DTW) with Gale-Church length ratio and numeric anchor detection.
@@ -22,6 +23,10 @@
   let importing = false;
 
   let pairs: AlignedPair[] = [];
+  const PAIR_PAGE = 300;
+  let pairLimit = PAIR_PAGE;
+  // New alignment result (or cleared): start from the first page again
+  $: if (pairs.length === 0) pairLimit = PAIR_PAGE;
   let availableTmsList: TmInfo[] = [];
   let selectedTmId = '';
 
@@ -361,11 +366,11 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-            {#each pairs as pair, i (pair.id)}
+            {#each pairs.slice(0, pairLimit) as pair, i (pair.id)}
               <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors {pair.confirmed ? '' : 'opacity-60 bg-gray-50/20'}">
                 <!-- Checkbox / Row # -->
                 <td class="py-2.5 px-3 text-center align-top">
-                  <button
+                  <button aria-label="Toggle Confirmation"
                     onclick={() => handleToggleConfirm(i)}
                     class="w-5 h-5 rounded border flex items-center justify-center text-[10px] font-bold transition-colors
                            {pair.confirmed
@@ -416,7 +421,7 @@
                 <!-- Actions -->
                 <td class="py-2.5 px-2 align-top text-center space-x-1">
                   {#if i < pairs.length - 1}
-                    <button
+                    <button aria-label="Merge with sentence below (⤹)"
                       onclick={() => handleMergeDown(i)}
                       class="text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 p-1"
                       title="Merge with sentence below (⤹)"
@@ -424,7 +429,7 @@
                       ⤹
                     </button>
                   {/if}
-                  <button
+                  <button aria-label="Delete alignment pair"
                     onclick={() => handleDeletePair(i)}
                     class="text-gray-400 hover:text-red-500 p-1"
                     title="Delete alignment pair"
@@ -434,6 +439,13 @@
                 </td>
               </tr>
             {/each}
+            {#if pairs.length > pairLimit}
+              <tr>
+                <td colspan="5">
+                  <ShowMore shown={pairLimit} total={pairs.length} step={PAIR_PAGE} onmore={() => (pairLimit += PAIR_PAGE)} />
+                </td>
+              </tr>
+            {/if}
           </tbody>
         </table>
       </div>

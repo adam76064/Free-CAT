@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   // TM Manager page — list, create, import/export TMs.
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
@@ -186,7 +187,7 @@
 
 <!-- Create TM Modal -->
 {#if showCreate}
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div use:dialog={{ label: "Create Translation Memory" }} class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-5">Create Translation Memory</h2>
       <div class="space-y-4">

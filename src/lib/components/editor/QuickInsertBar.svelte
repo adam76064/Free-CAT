@@ -108,7 +108,7 @@
   </div>
 
   <div class="ml-auto shrink-0 pl-2">
-    <button
+    <button aria-label="Hide QuickInsert Bar (Ctrl+Shift+I to toggle)"
       type="button"
       on:click={() => dispatch('close')}
       title="Hide QuickInsert Bar (Ctrl+Shift+I to toggle)"

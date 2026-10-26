@@ -18,7 +18,7 @@ pub async fn run_qa(
     state: State<'_, AppState>,
 ) -> Result<Vec<QaResult>, String> {
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let db = state.project_db.lock().unwrap();
+    let db = state.project_db.lock();
 
     let project = db.get_project(&project_id).ok().flatten();
     let tgt_lang = project.as_ref().map(|p| p.tgt_lang.as_str());
@@ -27,7 +27,7 @@ pub async fn run_qa(
     db.clear_qa_results(&project_id).map_err(|e| e.to_string())?;
 
     // Load forbidden terms from all active termbases
-    let tb_index = state.tb_index.lock().unwrap().clone();
+    let tb_index = state.tb_index.lock().clone();
     let mut forbidden_terms = Vec::new();
     for entry in tb_index.iter().filter(|e| tb_ids.contains(&e.id)) {
         if let Ok(tb) = TbDb::open(entry.id.clone(), entry.name.clone(), entry.path.clone()) {
@@ -91,7 +91,7 @@ pub async fn get_qa_results(
     state: State<'_, AppState>,
 ) -> Result<Vec<QaResult>, String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .get_qa_results(&project_id)
         .map_err(|e| e.to_string())
 }
@@ -103,7 +103,7 @@ pub async fn clear_qa_results(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.project_db
-        .lock().unwrap()
+        .lock()
         .clear_qa_results(&project_id)
         .map_err(|e| e.to_string())
 }

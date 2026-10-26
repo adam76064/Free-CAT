@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * AutoTextManagerModal.svelte — Studio-grade AutoText & Shorthand Dictionary Manager
    * Allows translators to manage rapid typing triggers and boilerplate expansions.
@@ -44,7 +45,7 @@
 
 {#if isOpen}
   <!-- Backdrop -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+  <div use:dialog={{ label: "AutoText & Shorthand Dictionary Manager" }} class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden">
       <!-- Header -->
       <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/80 dark:bg-gray-900/80">
@@ -116,7 +117,7 @@
             />
           </div>
           <div class="col-span-1 flex justify-end">
-            <button
+            <button aria-label="Add Shorthand"
               type="submit"
               disabled={!newTrigger.trim() || !newExpansion.trim()}
               class="w-full py-1.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-xs font-bold rounded transition-colors shadow-2xs cursor-pointer"
@@ -151,7 +152,7 @@
                   </span>
                 {/if}
               </div>
-              <button
+              <button aria-label="Delete shorthand"
                 type="button"
                 on:click={() => deleteAutoTextEntry(item.id)}
                 class="text-gray-400 hover:text-red-500 text-xs p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer shrink-0"

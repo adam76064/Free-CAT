@@ -1,5 +1,16 @@
-/* Google Fonts — load Inter for UI, JetBrains Mono for editor */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted fonts (bundled by Vite; the app works fully offline).
+   Inter for UI, JetBrains Mono for the editor, Noto Sans Arabic as the
+   Arabic fallback so Arabic text isn't rendered in a monospace/system face.
+   Only the Latin and Arabic subsets are bundled to keep the binary small. */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/noto-sans-arabic/arabic-400.css';
+@import '@fontsource/noto-sans-arabic/arabic-500.css';
+@import '@fontsource/noto-sans-arabic/arabic-700.css';
 
 @tailwind base;
 @tailwind components;
@@ -13,7 +24,31 @@
   }
 
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', 'Noto Sans Arabic', system-ui, sans-serif;
+  }
+
+  /* Visible keyboard focus for controls. Text fields and the editor cells keep
+     their own focus styling; mouse clicks don't trigger :focus-visible. */
+  button:focus-visible,
+  a:focus-visible,
+  summary:focus-visible,
+  select:focus-visible,
+  [role='button']:focus-visible,
+  input[type='checkbox']:focus-visible,
+  input[type='radio']:focus-visible,
+  input[type='range']:focus-visible {
+    outline: 2px solid theme('colors.brand.500');
+    outline-offset: 2px;
+  }
+
+  /* Respect the OS "reduce motion" setting (pulses, slide-ins, spinners). */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Scrollbar styling */

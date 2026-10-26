@@ -90,7 +90,8 @@ pub fn pseudotranslate_text(source: &str, options: &PseudoTranslateOptions) -> S
     }
 
     // Regex matching inline tags like {1}, {/1}, {b}, <g id="1">, </g>
-    let tag_re = Regex::new(r"(\{[^}]+\}|<[^>]+>)").unwrap();
+    static TAG_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let tag_re = TAG_RE.get_or_init(|| Regex::new(r"(\{[^}]+\}|<[^>]+>)").unwrap());
 
     // Split text into tokens: alternating between translatable text and tags
     let mut parts: Vec<(bool, String)> = Vec::new();

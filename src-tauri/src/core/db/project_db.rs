@@ -11,6 +11,15 @@ pub struct ProjectDb {
     conn: Connection,
 }
 
+/// One change in a batch update. `None` fields are left untouched.
+#[derive(Debug, Clone, Default)]
+pub struct SegmentPatch {
+    pub id: String,
+    pub target_text: Option<String>,
+    pub status: Option<SegmentStatus>,
+    pub locked: Option<bool>,
+}
+
 impl ProjectDb {
     /// Open (or create) the project database at `path`.
     pub fn open(path: PathBuf) -> Result<Self> {
@@ -291,6 +300,38 @@ impl ProjectDb {
             params![target, status.as_str(), modified_at, id],
         )?;
         Ok(())
+    }
+
+    /// Apply many segment changes in ONE transaction (all-or-nothing).
+    ///
+    /// Unlike `toggle_segment_lock`, lock changes are explicit (`locked: Some(true)`),
+    /// so re-running a batch is idempotent. `modified_at` is only bumped when the
+    /// target text or status changes, matching the single-segment save path.
+    /// Returns the number of segments actually changed (unknown ids are skipped).
+    pub fn apply_segment_patches(&self, patches: &[SegmentPatch], modified_at: &str) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut changed = 0usize;
+        {
+            let mut stmt = tx.prepare_cached(
+                "UPDATE segments SET
+                    target_text = COALESCE(?1, target_text),
+                    status      = COALESCE(?2, status),
+                    locked      = COALESCE(?3, locked),
+                    modified_at = CASE WHEN ?1 IS NOT NULL OR ?2 IS NOT NULL THEN ?4 ELSE modified_at END
+                 WHERE id = ?5",
+            )?;
+            for p in patches {
+                changed += stmt.execute(params![
+                    p.target_text.as_deref(),
+                    p.status.as_ref().map(|s| s.as_str()),
+                    p.locked.map(|b| b as i32),
+                    modified_at,
+                    p.id,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(changed)
     }
 
     pub fn update_segment_source(&self, id: &str, new_source: &str, modified_at: &str) -> Result<Segment> {
@@ -747,5 +788,111 @@ impl ProjectDb {
 impl std::fmt::Debug for ProjectDb {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ProjectDb")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A throwaway on-disk project DB (removed on drop) with `n` segments in file "f1".
+    struct TempDb { db: ProjectDb, path: PathBuf }
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            for ext in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{}", self.path.display(), ext));
+            }
+        }
+    }
+
+    fn temp_db(n: usize) -> TempDb {
+        let path = std::env::temp_dir().join(format!("freecat-test-{}.db", uuid::Uuid::new_v4()));
+        let db = ProjectDb::open(path.clone()).unwrap();
+        // Segments reference project files; this test only exercises segment rows.
+        db.conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        for i in 0..n {
+            db.insert_segment(&Segment {
+                id: format!("s{i}"),
+                file_id: "f1".into(),
+                seq_number: i as i64,
+                source_text: format!("source {i}"),
+                target_text: String::new(),
+                status: SegmentStatus::New,
+                match_percent: None,
+                match_origin: None,
+                locked: false,
+                bookmarked: false,
+                comment: None,
+                created_at: "2026-01-01T00:00:00Z".into(),
+                modified_at: "2026-01-01T00:00:00Z".into(),
+                modified_by: None,
+            }).unwrap();
+        }
+        TempDb { db, path }
+    }
+
+    fn patch(id: &str) -> SegmentPatch {
+        SegmentPatch { id: id.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn batch_updates_target_status_and_lock_together() {
+        let t = temp_db(3);
+        let n = t.db.apply_segment_patches(&[
+            SegmentPatch { target_text: Some("مرحبا".into()), status: Some(SegmentStatus::Draft), ..patch("s0") },
+            SegmentPatch { locked: Some(true), ..patch("s1") },
+        ], "2026-02-02T00:00:00Z").unwrap();
+        assert_eq!(n, 2);
+
+        let segs = t.db.get_segments_for_file("f1").unwrap();
+        assert_eq!(segs[0].target_text, "مرحبا");
+        assert_eq!(segs[0].status, SegmentStatus::Draft);
+        assert_eq!(segs[0].modified_at, "2026-02-02T00:00:00Z");
+        assert!(!segs[0].locked);
+        // lock-only change leaves text/status/modified_at alone
+        assert!(segs[1].locked);
+        assert_eq!(segs[1].status, SegmentStatus::New);
+        assert_eq!(segs[1].modified_at, "2026-01-01T00:00:00Z");
+        // untouched segment
+        assert_eq!(segs[2].target_text, "");
+    }
+
+    #[test]
+    fn lock_changes_are_idempotent_unlike_toggle() {
+        let t = temp_db(1);
+        let lock = [SegmentPatch { locked: Some(true), ..patch("s0") }];
+        t.db.apply_segment_patches(&lock, "x").unwrap();
+        t.db.apply_segment_patches(&lock, "x").unwrap(); // re-run: still locked
+        assert!(t.db.get_segments_for_file("f1").unwrap()[0].locked);
+        t.db.apply_segment_patches(&[SegmentPatch { locked: Some(false), ..patch("s0") }], "x").unwrap();
+        assert!(!t.db.get_segments_for_file("f1").unwrap()[0].locked);
+    }
+
+    #[test]
+    fn unknown_ids_are_skipped_and_empty_batch_is_a_noop() {
+        let t = temp_db(1);
+        assert_eq!(t.db.apply_segment_patches(&[], "x").unwrap(), 0);
+        let n = t.db.apply_segment_patches(&[
+            SegmentPatch { locked: Some(true), ..patch("missing") },
+            SegmentPatch { locked: Some(true), ..patch("s0") },
+        ], "x").unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn large_batch_runs_in_one_transaction_quickly() {
+        let t = temp_db(20_000);
+        let patches: Vec<SegmentPatch> = (0..20_000)
+            .map(|i| SegmentPatch {
+                target_text: Some(format!("t{i}")),
+                status: Some(SegmentStatus::Draft),
+                ..patch(&format!("s{i}"))
+            })
+            .collect();
+        let start = std::time::Instant::now();
+        assert_eq!(t.db.apply_segment_patches(&patches, "2026-03-03T00:00:00Z").unwrap(), 20_000);
+        assert!(start.elapsed().as_secs() < 5, "took {:?}", start.elapsed());
+        let segs = t.db.get_segments_for_file("f1").unwrap();
+        assert_eq!(segs[19_999].target_text, "t19999");
     }
 }

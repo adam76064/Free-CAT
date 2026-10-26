@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * PseudoTranslateModal — Pre-Flight DTP & Layout Simulation Studio
    * Inspired by SDL Trados Studio Pseudo-translation (Chapter 45).
@@ -83,6 +84,7 @@
   >
     <!-- Modal Card -->
     <div
+      use:dialog={{ label: "Pseudo-translation" }}
       class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]"
     >
       <!-- Header -->

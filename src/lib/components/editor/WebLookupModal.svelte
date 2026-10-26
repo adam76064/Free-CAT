@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   /**
    * WebLookupModal.svelte — Studio Web Lookup! & Multi-Resource Concordance Omnibar
    * (Trados Studio Manual Chapter 30, pp. 278-280)
@@ -172,7 +173,7 @@
 
 {#if isOpen}
   <!-- Backdrop -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-100">
+  <div use:dialog={{ label: "Web lookup and concordance" }} class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-100">
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl max-w-xl w-full flex flex-col overflow-hidden">
       <!-- Header -->
       <div class="px-5 py-3.5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/80 dark:bg-gray-900/80">

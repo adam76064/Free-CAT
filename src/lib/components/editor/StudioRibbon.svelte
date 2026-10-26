@@ -393,14 +393,14 @@
         <!-- Group 3: Font Zoom & Optical Boost -->
         <div class="flex items-center gap-1.5 pr-3 border-r border-gray-200 dark:border-gray-800 shrink-0">
           <span class="text-[10px] text-gray-400 font-medium">Font:</span>
-          <button
+          <button aria-label="Decrease font size"
             type="button"
             onclick={() => dispatch('zoomOut')}
             class="w-6 h-6 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 font-bold cursor-pointer"
             title="Decrease font size"
           >-</button>
           <span class="font-mono text-xs px-1 font-semibold">{$settings.fontSize}px</span>
-          <button
+          <button aria-label="Increase font size"
             type="button"
             onclick={() => dispatch('zoomIn')}
             class="w-6 h-6 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 font-bold cursor-pointer"

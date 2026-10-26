@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '$lib/actions/dialog';
   // TermExtractionModal.svelte — Automated Terminology Extraction (ATE) Workbench
   import { extractTerms, addTerm, listTbs, type ExtractedTerm, type TbInfo } from '$lib/ipc/termbase';
   import { currentProject } from '$lib/stores/project';
@@ -80,7 +81,7 @@
 </script>
 
 {#if isOpen}
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+  <div use:dialog={{ label: "Automated Terminology Extraction (ATE)" }} class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
     <div
       class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
     >

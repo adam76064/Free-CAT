@@ -18,6 +18,7 @@
   import TmMatchBadge from '$lib/components/tm/TmMatchBadge.svelte';
   import AutoSuggestPopup from './AutoSuggestPopup.svelte';
   import QuickPlaceOmnibar from './QuickPlaceOmnibar.svelte';
+  import SegmentContextMenu from './SegmentContextMenu.svelte';
   import type { SuggestionItem } from '$lib/utils/suggestTrie';
   import { autoTextEntries } from '$lib/stores/autotext';
 
@@ -59,6 +60,15 @@
   // Inline AI Refinement HUD state
   let selectedTargetText = '';
   let isAiRefineMenuOpen = false;
+
+  // Context Menu state
+  let contextMenuPos: { x: number; y: number } | null = null;
+
+  function handleContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    onSelect();
+    contextMenuPos = { x: e.clientX, y: e.clientY };
+  }
 
   // Sync contenteditable when target_text changes from outside (e.g. TM apply)
   afterUpdate(() => {
@@ -540,6 +550,7 @@
     class="grid grid-cols-[3px_3.25rem_1fr] min-h-[4.5rem] border-b border-gray-100 dark:border-gray-800/80
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
     onclick={onSelect}
+    oncontextmenu={handleContextMenu}
     role="row"
     aria-rowindex={rowIndex}
     tabindex="-1"
@@ -777,6 +788,7 @@
            transition-colors cursor-pointer relative group {rowBg} {zenClass}"
     style="grid-template-columns: 3px 3.25rem minmax(200px, {$settings.sourceRatio}%) minmax(200px, 1fr);"
     onclick={onSelect}
+    oncontextmenu={handleContextMenu}
     role="row"
     aria-rowindex={rowIndex}
     tabindex="-1"
@@ -1092,4 +1104,24 @@
       </div>
     </div>
   </div>
+{/if}
+
+{#if contextMenuPos}
+  <SegmentContextMenu
+    {segment}
+    x={contextMenuPos.x}
+    y={contextMenuPos.y}
+    {canMergeNext}
+    {canMergePrev}
+    onClose={() => (contextMenuPos = null)}
+    onCopySource={() => navigator.clipboard.writeText(segment.source_text)}
+    onCopyTarget={() => navigator.clipboard.writeText(segment.target_text)}
+    onCopySourceToTarget={handleCopySource}
+    onClearTarget={handleClearTarget}
+    onToggleLock={() => onToggleLock(segment.id)}
+    onToggleBookmark={() => onToggleBookmark(segment.id)}
+    onSplit={() => onSplit(segment.id)}
+    onMergeNext={() => onMergeNext(segment.id)}
+    onConfirm={() => onConfirm(segment)}
+  />
 {/if}

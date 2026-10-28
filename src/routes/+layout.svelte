@@ -3,9 +3,13 @@
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { browser } from '$app/environment';
   import { settings, applyTheme } from '$lib/stores/settings';
   import Icon from '$lib/components/ui/Icon.svelte';
   import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
+  import KeyboardShortcutsModal from '$lib/components/ui/KeyboardShortcutsModal.svelte';
+
+  let showShortcuts = false;
 
   // Theme is applied by the settings store at startup; here we only follow
   // OS changes while the user's choice is 'system'.
@@ -15,8 +19,32 @@
       if (get(settings).theme === 'system') applyTheme('system');
     };
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+
+    const onKeydown = (e: KeyboardEvent) => {
+      // Ctrl+/ or Cmd+/ to toggle keyboard shortcuts modal
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        showShortcuts = !showShortcuts;
+      }
+      // Ctrl+Shift+D to cycle dark mode
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        cycleTheme();
+      }
+    };
+    window.addEventListener('keydown', onKeydown);
+
+    return () => {
+      mq.removeEventListener('change', onChange);
+      window.removeEventListener('keydown', onKeydown);
+    };
   });
+
+  function cycleTheme() {
+    const cur = $settings.theme;
+    const next = cur === 'dark' ? 'light' : cur === 'light' ? 'system' : 'dark';
+    settings.set({ ...$settings, theme: next });
+  }
 
   $: pathname = $page.url.pathname;
 
@@ -33,7 +61,7 @@
 
   <!-- Sidebar Navigation (64px wide, icon + label) -->
   <nav
-    class="flex flex-col items-center w-16 bg-gray-900 dark:bg-gray-950 border-r border-gray-800 py-3 gap-1 shrink-0"
+    class="flex flex-col items-center w-16 bg-gray-900 dark:bg-gray-950 border-r border-gray-800 py-3 gap-1 shrink-0 select-none"
     aria-label="Main Navigation"
   >
     <!-- Logo mark -->
@@ -59,6 +87,28 @@
     <!-- Spacer -->
     <div class="flex-1"></div>
 
+    <!-- Shortcuts Modal Button -->
+    <button
+      type="button"
+      onclick={() => (showShortcuts = true)}
+      class="w-12 flex flex-col items-center py-1.5 px-1 rounded-xl gap-0.5 text-gray-500 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer"
+      title="Keyboard Shortcuts (Ctrl+/)"
+    >
+      <Icon name="keyboard" size={17} />
+      <span class="text-[8px] font-medium leading-none text-gray-400">Keys</span>
+    </button>
+
+    <!-- Theme quick toggle -->
+    <button
+      type="button"
+      onclick={cycleTheme}
+      class="w-12 flex flex-col items-center py-1.5 px-1 rounded-xl gap-0.5 text-gray-500 hover:text-gray-200 hover:bg-gray-800 transition-colors cursor-pointer"
+      title="Theme: {$settings.theme} (Click to cycle, or Ctrl+Shift+D)"
+    >
+      <Icon name={$settings.theme === 'dark' ? 'moon' : 'sun'} size={17} />
+      <span class="text-[8px] font-medium capitalize leading-none text-gray-400">{$settings.theme}</span>
+    </button>
+
     <!-- Settings (pinned to bottom) -->
     <a
       href="/settings"
@@ -79,6 +129,9 @@
   </main>
 
 </div>
+
+<!-- Keyboard shortcuts cheat-sheet modal -->
+<KeyboardShortcutsModal open={showShortcuts} onClose={() => (showShortcuts = false)} />
 
 <!-- Global toast notifications (rendered above everything) -->
 <ToastContainer />
